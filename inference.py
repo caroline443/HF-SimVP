@@ -21,7 +21,7 @@ def visualize_sequence_comparison():
     
     # 1. 挑选一个好的 Case
     # 建议挑选：10, 78, 42, 25 (找一个强回波移动明显的)
-    CASE_IDX = 42 
+    CASE_IDX = 78 
     dataset = SEVIRDataset(H5_PATH)
     input_seq, target_seq = dataset[CASE_IDX] # target_seq shape: [12, 1, 384, 384]
     

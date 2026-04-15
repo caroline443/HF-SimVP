@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from torch.cuda.amp import autocast, GradScaler # 🚀 混合精度
+from torch.cuda.amp import autocast, GradScaler # 混合精度
 from tqdm import tqdm
 import os
 import argparse
@@ -18,7 +18,7 @@ from model import SimVP_Baseline, SimVP_Enhanced
 from dataset_universal import SEVIRDataset, ImageFolderDataset 
 from utils_metrics import MetricCalculator
 
-# --- ⚙️ 全局配置中心 ---
+# --- 全局配置中心 ---
 CONFIG = {
     # 默认数据集 (可通过命令行覆盖)
     "DATASET_TYPE": "sevir", 
@@ -39,14 +39,14 @@ CONFIG = {
     "SEED": 42
 }
 
-# --- 🛠️ 辅助函数: 随机种子 ---
+# --- 辅助函数: 随机种子 ---
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    print(f"🌱 随机种子已设置为: {seed}")
+    print(f" 随机种子已设置为: {seed}")
 
-# --- 📝 辅助函数: 日志系统 ---
+# --- 辅助函数: 日志系统 ---
 def get_logger(name, save_dir):
     if logging.getLogger(name).hasHandlers():
         return logging.getLogger(name)
@@ -68,7 +68,7 @@ def get_logger(name, save_dir):
     logger.addHandler(console_handler)
     return logger
 
-# --- 🔥 混合损失函数 (Hybrid Loss) ---
+# --- 混合损失函数 (Hybrid Loss) ---
 class HybridLoss(nn.Module):
     def __init__(self, device, weight_l1=5.0, threshold=0.3, alpha=0.5):
         super().__init__()
@@ -96,14 +96,14 @@ class HybridLoss(nn.Module):
         # 3. 组合
         return (1 - self.alpha) * loss_structure + self.alpha * loss_intensity
 
-# --- 🏃 主训练管线 ---
+# --- 主训练管线 ---
 def train_pipeline(mode):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     timestamp = datetime.now().strftime("%m%d_%H%M")
     
     # 获取日志记录器
     logger = get_logger(f"{CONFIG['DATASET_TYPE']}_{mode}_{timestamp}", CONFIG["SAVE_DIR"])
-    logger.info(f"🚀 启动训练 | 模式: {mode} | 数据集: {CONFIG['DATASET_TYPE']}")
+    logger.info(f"启动训练 | 模式: {mode} | 数据集: {CONFIG['DATASET_TYPE']}")
     
     # -------------------------------------------
     # 1. 动态加载数据集 (根据配置切换)
@@ -129,7 +129,7 @@ def train_pipeline(mode):
     else:
         raise ValueError(f"未知的数据集类型: {dataset_type}")
         
-    logger.info(f"📊 数据集加载完成: {len(dataset)} 样本 | Input: {in_len} -> Output: {out_len}")
+    logger.info(f"数据集加载完成: {len(dataset)} 样本 | Input: {in_len} -> Output: {out_len}")
 
     # 划分训练/验证集
     val_size = int(len(dataset) * CONFIG["VAL_RATIO"])
@@ -145,7 +145,7 @@ def train_pipeline(mode):
     # -------------------------------------------
     # 2. 模型与优化器初始化
     # -------------------------------------------
-    logger.info(f"🛠 构建模型: {mode} (In_Shape: {in_len}, 1, 384, 384)")
+    logger.info(f" 构建模型: {mode} (In_Shape: {in_len}, 1, 384, 384)")
     
     if mode == 'baseline':
         model = SimVP_Baseline(in_shape=(in_len, 1, 384, 384)).to(device)
@@ -159,7 +159,7 @@ def train_pipeline(mode):
     
     optimizer = optim.AdamW(model.parameters(), lr=CONFIG["LR"])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
-    scaler = GradScaler() # 🚀 混合精度缩放器
+    scaler = GradScaler() # 混合精度缩放器
     metrics_calc = MetricCalculator(device) # 指标计算工具
     
     # -------------------------------------------
@@ -228,11 +228,11 @@ def train_pipeline(mode):
             save_name = f"{dataset_type}_{mode}_best_{timestamp}.pth"
             save_path = os.path.join(CONFIG["SAVE_DIR"], save_name)
             torch.save(model.state_dict(), save_path)
-            logger.info(f"   🌟 New Best Model Saved: {save_name}")
+            logger.info(f"   New Best Model Saved: {save_name}")
         else:
             patience_counter += 1
             if patience_counter >= CONFIG["PATIENCE"]:
-                logger.info("🛑 Early Stopping Triggered!")
+                logger.info("Early Stopping Triggered!")
                 break
     
     # 清理显存

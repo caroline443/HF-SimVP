@@ -1,87 +1,126 @@
-# dataset_universal.py
 import torch
 from torch.utils.data import Dataset
 import h5py
 import numpy as np
 import os
-from PIL import Image
 import glob
 
 class SEVIRDataset(Dataset):
-    """SEVIR (H5格式) 加载器"""
-    def __init__(self, h5_file_path, input_len=13, pred_len=12):
-        super().__init__()
-        self.h5_file_path = h5_file_path
-        self.total_len = input_len + pred_len
-        self.input_len = input_len
-        # 预先读取长度，避免反复打开文件
-        with h5py.File(h5_file_path, 'r') as hf:
-            self.keys = list(hf.keys())
-            # 自动寻找 key
-            self.data_source = 'vil' if 'vil' in self.keys else self.keys[0]
-            self.num_events = hf[self.data_source].shape[0]
-
-    def __len__(self):
-        return self.num_events
-
-    def __getitem__(self, idx):
-        with h5py.File(self.h5_file_path, 'r') as hf:
-            raw_data = hf[self.data_source][idx] 
-        
-        # 维度统一化: (T, H, W)
-        # SEVIR 原始可能是 (H, W, T=49)
-        if raw_data.shape[-1] == 49: 
-            raw_data = np.transpose(raw_data, (2, 0, 1))
-            
-        seq_data = raw_data[:self.total_len]
-        # 归一化 (0-255 -> 0-1)
-        norm_data = seq_data.astype(np.float32) / 255.0
-        # 增加 Channel: (T, 1, H, W)
-        norm_data = np.expand_dims(norm_data, axis=1)
-        
-        return torch.from_numpy(norm_data[:self.input_len]), torch.from_numpy(norm_data[self.input_len:])
-
-class ImageFolderDataset(Dataset):
     """
-    通用图片文件夹加载器 (适用于 HKO-7 和 MeteoNet)
-    假设目录结构: root/sample_001/1.png, 2.png...
+    [V3.0] 全量 SEVIR 加载器 (含滑窗扩充策略)
     """
-    def __init__(self, root_dir, input_len=10, pred_len=10, file_ext='.png'):
+    def __init__(self, data_root, mode='train', input_len=13, pred_len=12):
         super().__init__()
+        self.data_root = data_root
+        self.mode = mode
         self.input_len = input_len
         self.pred_len = pred_len
-        self.seq_len = input_len + pred_len
+        self.total_len = input_len + pred_len
         
-        self.samples = []
-        if not os.path.exists(root_dir):
-            print(f"⚠️ Warning: 路径不存在 {root_dir}")
-            return
-
-        # 扫描子文件夹
-        subfolders = [f.path for f in os.scandir(root_dir) if f.is_dir()]
+        # --- 🔥 [核心修改] 定义滑窗步长 (Stride) ---
+        # 训练时：stride=12 (每1小时滑动一次)，数据量翻倍，提升泛化
+        # 测试时：stride=49 (不重叠)，保证评估公正
+        if mode == 'train':
+            self.stride = 12 
+        else:
+            self.stride = 49 
         
-        for sf in subfolders:
-            files = sorted(glob.glob(os.path.join(sf, f"*{file_ext}")))
-            # 如果文件夹内图片数量足够，则作为一个样本
-            if len(files) >= self.seq_len:
-                # 简单起见，只取前 seq_len 张
-                self.samples.append(files[:self.seq_len])
+        # 1. 扫描所有 .h5 文件
+        all_files = sorted(glob.glob(os.path.join(data_root, '*.h5')))
+        self.files = []
+        
+        print(f"[{mode.upper()}] 正在扫描数据文件: {data_root}")
+        
+        # 2. 根据年份划分 Train/Test (SimCast/EarthFormer 标准)
+        for f_path in all_files:
+            filename = os.path.basename(f_path)
+            try:
+                parts = filename.split('_')
+                year_idx = -1
+                for i, part in enumerate(parts):
+                    if part in ['2017', '2018', '2019']:
+                        year_idx = i
+                        break
                 
-        print(f"📊 {root_dir} 加载完毕: 共 {len(self.samples)} 个序列样本")
+                if year_idx == -1: continue 
+
+                year = int(parts[year_idx])
+                start_date = parts[year_idx+1] 
+                month = int(start_date[:2]) 
+                
+                is_train_file = True
+                if year > 2019:
+                    is_train_file = False
+                elif year == 2019:
+                    if month >= 6: # 6月及以后是测试集
+                        is_train_file = False
+                
+                if mode == 'train' and is_train_file:
+                    self.files.append(f_path)
+                elif mode == 'test' and not is_train_file:
+                    self.files.append(f_path)
+                    
+            except Exception as e:
+                print(f"跳过文件 {filename}: {e}")
+                continue
+
+        if len(self.files) == 0:
+            raise ValueError(f" 在 {data_root} 下未找到符合 {mode} 模式的文件！")
+
+        # 3. 构建全局滑窗索引
+        self.sample_indices = [] 
+        print(f"[{mode.upper()}] 正在构建滑窗索引 (Stride={self.stride})...")
+        
+        for f_path in self.files:
+            try:
+                with h5py.File(f_path, 'r') as hf:
+                    keys = list(hf.keys())
+                    data_source = 'vil' if 'vil' in keys else keys[0]
+                    
+                    # 获取 shape, 假设是 (N, T, H, W) 或 (N, H, W, T)
+                    # SEVIR VIL 通常是 (N, 49, 384, 384)
+                    shape = hf[data_source].shape
+                    event_count = shape[0]
+                    T_max = 49 # SEVIR 标准固定长度
+                    
+                    # --- 🔥 [核心修改] 滑窗切分 ---
+                    for i in range(event_count):
+                        # 只要剩余长度够 25 帧，就切一个样本
+                        for t_start in range(0, T_max - self.total_len + 1, self.stride):
+                            self.sample_indices.append({
+                                'path': f_path,
+                                'key': data_source,
+                                'event_idx': i,
+                                'time_offset': t_start
+                            })
+                            
+            except Exception as e:
+                print(f" 读取 {f_path} 失败: {e}")
+
+        print(f" [{mode.upper()}] 索引构建完成: 共 {len(self.sample_indices)} 个序列样本")
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.sample_indices)
 
     def __getitem__(self, idx):
-        file_paths = self.samples[idx]
-        frames = []
-        for p in file_paths:
-            # 读取灰度图并 Resize 为 384x384
-            img = Image.open(p).convert('L').resize((384, 384))
-            frames.append(np.array(img))
-            
-        frames_np = np.stack(frames, axis=0) # (T, H, W)
-        norm_data = frames_np.astype(np.float32) / 255.0 # 归一化
-        norm_data = np.expand_dims(norm_data, axis=1) # (T, 1, H, W)
+        info = self.sample_indices[idx]
+        
+        with h5py.File(info['path'], 'r') as hf:
+            raw_event = hf[info['key']][info['event_idx']] 
+        
+        # 维度统一化: (T, H, W)
+        if raw_event.shape[-1] == 49: 
+            raw_event = np.transpose(raw_event, (2, 0, 1))
+        
+        # 根据滑窗 offset 切片
+        t_start = info['time_offset']
+        t_end = t_start + self.total_len
+        seq_data = raw_event[t_start:t_end] 
+        
+        # 归一化 (0-255 -> 0-1)
+        norm_data = seq_data.astype(np.float32) / 255.0
+        
+        # 增加 Channel: (T, 1, H, W)
+        norm_data = np.expand_dims(norm_data, axis=1)
         
         return torch.from_numpy(norm_data[:self.input_len]), torch.from_numpy(norm_data[self.input_len:])
