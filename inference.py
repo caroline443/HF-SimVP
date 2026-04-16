@@ -8,12 +8,14 @@ from matplotlib import colors
 from model import SimVP_Enhanced, SimVP_Baseline
 from dataset import SEVIRDataset
 
+from datetime import datetime
+
 # --- ⚙️ 配置 ---
-BASELINE_PATH = "/root/autodl-tmp/radar/checkpoints_v3/sevir_baseline_best_1211_2305.pth" 
-ENHANCED_PATH = "/root/autodl-tmp/radar/checkpoints_v3/sevir_enhanced_best_1211_2321.pth"
-H5_PATH = "./sevir_data/SEVIR_VIL_STORMEVENTS_2018_0101_0630.h5"
+BASELINE_PATH = r"F:\zyx\result\20260416\baseline_best_csi.pth" # 训练生成的Baseline模型权重路径，根据实际替换
+ENHANCED_PATH = r"F:\zyx\result\20260416\enhanced_best_csi.pth" # 训练生成的Enhanced模型权重路径，根据实际替换
+H5_PATH = r"F:\zyx\dataset\sevir_data" # dataset类接受目录
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-SAVE_DIR = "./paper_results"
+SAVE_DIR = os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d"))
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 def visualize_sequence_comparison():

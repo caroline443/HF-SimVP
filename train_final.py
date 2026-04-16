@@ -18,15 +18,15 @@ from utils_metrics import MetricCalculator, MetricTracker
 # --- 全局配置 (V3.1 修复版) ---
 CONFIG = {
     "DATASET_TYPE": "sevir", 
-    "PATH_SEVIR": r"F:\zyx\HF-SimVP\dataset\sevir_data", # 确认路径
+    "PATH_SEVIR": r"F:\zyx\dataset\sevir_data", # 确认路径
     
     "BATCH_SIZE": 8,
-    "LR": 0.0005,       # 5e-4: 配合 Gradient Clip 使用
+    "LR": 0.0002,       # 降低学习率，2e-4 是时空预测较稳的值
     "EPOCHS": 50,       # 跑满 50 轮
     "PATIENCE": 50,     # 禁用 Early Stopping
     "GRAD_CLIP": 0.1,   # 防爆阀
     "NUM_WORKERS": 4,     
-    "SAVE_DIR": "./checkpoints_v3_stable",
+    "SAVE_DIR": os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")),
     "SEED": 42
 }
 
@@ -70,8 +70,8 @@ class HybridLoss(nn.Module):
         target = target.float()
 
         # Warm-up 策略
-        warmup_epochs = 5
-        max_weight = 10.0
+        warmup_epochs = 10
+        max_weight = 5.0
         
         if self.current_epoch < warmup_epochs:
             ext_weight = 1.0 + (max_weight - 1.0) * (self.current_epoch / warmup_epochs)
@@ -125,10 +125,10 @@ def train_pipeline(mode):
         model = SimVP_Enhanced(in_shape=(in_len, 1, 384, 384)).to(device)
         criterion = HybridLoss(device, alpha=0.7).to(device)
     
-    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["LR"])
+    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["LR"], weight_decay=1e-4)
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=CONFIG["LR"], steps_per_epoch=len(train_loader), epochs=CONFIG["EPOCHS"],
-        pct_start=0.1, div_factor=10, final_div_factor=100
+        pct_start=0.2, div_factor=25, final_div_factor=100
     )
     scaler = GradScaler() 
     metrics_calc = MetricCalculator(device)

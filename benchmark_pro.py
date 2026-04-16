@@ -13,11 +13,13 @@ from utils_metrics import MetricCalculator, MetricTracker
 from dataset_universal import SEVIRDataset
 from model import SimVP_Baseline, SimVP_Enhanced
 
+from datetime import datetime
+
 # --- ⚙️ 全局配置 ---
-BASELINE_PATH = r"F:\zyx\HF-SimVP\checkpoints_v4_full\sevir_baseline_best_loss_1213_2026.pth" 
-ENHANCED_PATH = r"F:\zyx\HF-SimVP\checkpoints_v4_full\sevir_enhanced_best_csi_1219_0916.pth"
-H5_PATH = r"F:\zyx\HF-SimVP\dataset\sevir_data"
-SAVE_DIR = "./paper_results_final_v5" # 改个名字防止覆盖
+BASELINE_PATH = r"F:\zyx\result\20260416\baseline_best_csi.pth" 
+ENHANCED_PATH = r"F:\zyx\result\20260416\enhanced_best_csi.pth"
+H5_PATH = r"F:\zyx\dataset\sevir_data"
+SAVE_DIR = os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")) # 结果保存路径
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 8

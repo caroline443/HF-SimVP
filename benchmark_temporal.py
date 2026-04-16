@@ -13,14 +13,16 @@ from dataset_universal import SEVIRDataset
 from model import SimVP_Baseline, SimVP_Enhanced
 from utils_metrics import MetricCalculator
 
+from datetime import datetime
+
 # --- ⚙️ 配置中心 ---
 # 🔥🔥🔥 请务必修改为你刚才训练出来的最佳模型路径 🔥🔥🔥
-BASELINE_PATH = "/root/autodl-tmp/radar/checkpoints_v3/sevir_baseline_best_1211_2305.pth"
-ENHANCED_PATH = "/root/autodl-tmp/radar/checkpoints_v3/sevir_enhanced_best_1211_2321.pth"
+BASELINE_PATH = r"F:\zyx\result\20260416\baseline_best_csi.pth"
+ENHANCED_PATH = r"F:\zyx\result\20260416\enhanced_best_csi.pth"
 
 # 数据路径
-H5_PATH = "./sevir_data/SEVIR_VIL_STORMEVENTS_2018_0101_0630.h5"
-SAVE_DIR = "./paper_results"  # 图表保存位置
+H5_PATH = r"F:\zyx\dataset\sevir_data"
+SAVE_DIR = os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d"))  # 图表保存位置
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16

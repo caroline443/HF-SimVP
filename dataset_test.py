@@ -1,7 +1,8 @@
 # verify_data.py
+import os
 from dataset_universal import SEVIRDataset
 
-root = "F:\zyx\HF-SimVP\dataset\sevir_data"
+root = r"F:\zyx\dataset\sevir_data"
 
 print("正在检查训练集...")
 try:
