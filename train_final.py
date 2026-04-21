@@ -21,12 +21,20 @@ CONFIG = {
     "PATH_SEVIR": r"F:\zyx\dataset\sevir_data", # 确认路径
     
     "BATCH_SIZE": 8,
-    "LR": 0.0002,       # 降低学习率，2e-4 是时空预测较稳的值
+    "LR": 0.0002,       # Baseline 默认学习率
+    "LR_ENHANCED": 0.0001,  # Enhanced 更保守，降低失稳风险
     "EPOCHS": 50,       # 跑满 50 轮
     "PATIENCE": 50,     # 禁用 Early Stopping
     "GRAD_CLIP": 0.1,   # 防爆阀
+    "GRAD_NORM_GUARD": 10.0,  # 梯度范数过大时跳过更新
+    "LOSS_GUARD": 5.0,  # loss 异常上限
+    "LOSS_ALPHA_ENHANCED": 0.6,  # Enhanced 损失组合权重
+    "LOSS_WARMUP_EPOCHS": 15,
+    "LOSS_EXT_MAX_WEIGHT": 3.0,
+    "LOG_EVERY": 100,
     "NUM_WORKERS": 4,     
-    "SAVE_DIR": os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")),
+    "CKPT_DIR": os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")),
+    "LOG_DIR": os.path.join(os.path.dirname(__file__), "log"),
     "SEED": 42
 }
 
@@ -49,10 +57,12 @@ def get_logger(name, save_dir):
 
 # --- 动态预热混合损失 (只用于 Enhanced) ---
 class HybridLoss(nn.Module):
-    def __init__(self, device, alpha=0.7):
+    def __init__(self, device, alpha=0.6, warmup_epochs=15, max_weight=3.0):
         super().__init__()
         self.device = device
         self.alpha = alpha
+        self.warmup_epochs = warmup_epochs
+        self.max_weight = max_weight
         self.l1_loss = nn.L1Loss(reduction='none')
         self.ssim_module = MS_SSIM(data_range=1.0, size_average=True, channel=1, win_size=3).to(device)
         
@@ -70,13 +80,10 @@ class HybridLoss(nn.Module):
         target = target.float()
 
         # Warm-up 策略
-        warmup_epochs = 10
-        max_weight = 5.0
-        
-        if self.current_epoch < warmup_epochs:
-            ext_weight = 1.0 + (max_weight - 1.0) * (self.current_epoch / warmup_epochs)
+        if self.current_epoch < self.warmup_epochs:
+            ext_weight = 1.0 + (self.max_weight - 1.0) * (self.current_epoch / self.warmup_epochs)
         else:
-            ext_weight = max_weight
+            ext_weight = self.max_weight
             
         weights = torch.ones_like(target)
         weights[target > self.thresh_mid] = 2.0
@@ -99,8 +106,9 @@ class HybridLoss(nn.Module):
 
 def train_pipeline(mode):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    amp_enabled = (device == "cuda")
     timestamp = datetime.now().strftime("%m%d_%H%M")
-    logger = get_logger(f"{CONFIG['DATASET_TYPE']}_{mode}_{timestamp}", CONFIG["SAVE_DIR"])
+    logger = get_logger(f"{CONFIG['DATASET_TYPE']}_{mode}_{timestamp}", CONFIG["LOG_DIR"])
     logger.info(f"🚀 启动 V3.1 训练 | 模式: {mode} | Clip: {CONFIG['GRAD_CLIP']}")
     
     # 1. 数据集
@@ -120,18 +128,29 @@ def train_pipeline(mode):
         logger.info("⚡ 正在初始化 Baseline (SimVP + MSELoss)...")
         model = SimVP_Baseline(in_shape=(in_len, 1, 384, 384)).to(device)
         criterion = nn.MSELoss() 
+        train_lr = CONFIG["LR"]
     else: 
         logger.info("🔥 正在初始化 Enhanced (SpatialAttn + HybridLoss)...")
         model = SimVP_Enhanced(in_shape=(in_len, 1, 384, 384)).to(device)
-        criterion = HybridLoss(device, alpha=0.7).to(device)
+        criterion = HybridLoss(
+            device,
+            alpha=CONFIG["LOSS_ALPHA_ENHANCED"],
+            warmup_epochs=CONFIG["LOSS_WARMUP_EPOCHS"],
+            max_weight=CONFIG["LOSS_EXT_MAX_WEIGHT"],
+        ).to(device)
+        train_lr = CONFIG["LR_ENHANCED"]
     
-    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["LR"], weight_decay=1e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=train_lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=CONFIG["LR"], steps_per_epoch=len(train_loader), epochs=CONFIG["EPOCHS"],
+        optimizer, max_lr=train_lr, steps_per_epoch=len(train_loader), epochs=CONFIG["EPOCHS"],
         pct_start=0.2, div_factor=25, final_div_factor=100
     )
-    scaler = GradScaler() 
+    scaler = GradScaler(enabled=amp_enabled)
     metrics_calc = MetricCalculator(device)
+    logger.info(
+        f"🔧 Optimizer配置 | lr={train_lr:.6f} | amp={amp_enabled} | "
+        f"loss_guard={CONFIG['LOSS_GUARD']} | grad_guard={CONFIG['GRAD_NORM_GUARD']}"
+    )
     
     best_csi = 0.0
 
@@ -139,6 +158,12 @@ def train_pipeline(mode):
     for epoch in range(CONFIG["EPOCHS"]):
         model.train()
         train_loss = 0
+        valid_steps = 0
+        skip_loss_steps = 0
+        skip_grad_steps = 0
+        grad_norm_sum = 0.0
+        grad_norm_max = 0.0
+        grad_norm_count = 0
         
         # 🔥 [关键修复] 只有 Enhanced 模式的 HybridLoss 才需要更新 Epoch
         if mode == 'enhanced' and hasattr(criterion, 'set_epoch'):
@@ -148,29 +173,46 @@ def train_pipeline(mode):
         
         for inputs, targets in loop:
             inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             
-            with torch.amp.autocast('cuda'):
+            with autocast(enabled=amp_enabled):
                 outputs = model(inputs)
-                loss = criterion(outputs.float(), targets.float())
+            # 在 FP32 下计算损失，减少 MS-SSIM 数值不稳定
+            loss = criterion(outputs.float(), targets.float())
             
             # 熔断机制
-            if loss.item() > 20.0 or torch.isnan(loss) or torch.isinf(loss):
-                # Baseline 的 MSE 初始值可能较大，稍微放宽一点阈值到 20
-                print(f"⚠️ Warning: Abnormal Loss ({loss.item()}), skipping batch!")
-                optimizer.zero_grad()
+            if loss.item() > CONFIG["LOSS_GUARD"] or (not torch.isfinite(loss)):
+                skip_loss_steps += 1
+                if skip_loss_steps <= 5:
+                    logger.warning(f"⚠️ Abnormal Loss ({loss.item():.6f}), skipping batch")
+                optimizer.zero_grad(set_to_none=True)
                 continue
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["GRAD_CLIP"])
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["GRAD_CLIP"])
+
+            if not torch.isfinite(grad_norm) or grad_norm > CONFIG["GRAD_NORM_GUARD"]:
+                skip_grad_steps += 1
+                if skip_grad_steps <= 5:
+                    logger.warning(f"⚠️ Abnormal GradNorm ({float(grad_norm):.6f}), skipping step")
+                optimizer.zero_grad(set_to_none=True)
+                scaler.update()
+                continue
 
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
             
             train_loss += loss.item()
-            loop.set_postfix(loss=f"{loss.item():.4f}")
+            valid_steps += 1
+            grad_norm_value = float(grad_norm)
+            grad_norm_sum += grad_norm_value
+            grad_norm_max = max(grad_norm_max, grad_norm_value)
+            grad_norm_count += 1
+
+            if valid_steps % CONFIG["LOG_EVERY"] == 0:
+                loop.set_postfix(loss=f"{loss.item():.4f}", grad=f"{grad_norm_value:.3f}")
             
         # --- 验证 ---
         model.eval()
@@ -179,7 +221,7 @@ def train_pipeline(mode):
         with torch.no_grad():
             for inputs, targets in tqdm(val_loader, desc="Validating", leave=False):
                 inputs, targets = inputs.to(device), targets.to(device)
-                with torch.amp.autocast('cuda'):
+                with autocast(enabled=amp_enabled):
                     outputs = model(inputs)
                 batch_metrics = metrics_calc.compute_batch(outputs.float(), targets.float())
                 tracker.update(batch_metrics)
@@ -187,12 +229,20 @@ def train_pipeline(mode):
         avg_metrics, _ = tracker.result()
         avg_csi = avg_metrics['CSI_M']
         avg_ssim = avg_metrics['SSIM']
+        avg_loss = train_loss / max(1, valid_steps)
+        avg_grad = grad_norm_sum / max(1, grad_norm_count)
+        current_lr = optimizer.param_groups[0]["lr"]
         
-        logger.info(f"Ep {epoch+1} | Loss: {train_loss/len(train_loader):.4f} | CSI-M: {avg_csi:.4f} | SSIM: {avg_ssim:.4f}")
+        logger.info(
+            f"Ep {epoch+1} | Loss: {avg_loss:.4f} | CSI-M: {avg_csi:.4f} | SSIM: {avg_ssim:.4f} | "
+            f"Grad(avg/max): {avg_grad:.4f}/{grad_norm_max:.4f} | Skip(loss/grad): {skip_loss_steps}/{skip_grad_steps} | "
+            f"ValidSteps: {valid_steps}/{len(train_loader)} | LR: {current_lr:.6e}"
+        )
         
         if avg_csi > best_csi:
             best_csi = avg_csi
-            torch.save(model.state_dict(), os.path.join(CONFIG["SAVE_DIR"], f"{mode}_best_csi.pth"))
+            os.makedirs(CONFIG["CKPT_DIR"], exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(CONFIG["CKPT_DIR"], f"{mode}_best_csi.pth"))
             logger.info(f"🔥 New Best CSI: {best_csi:.4f}")
 
 if __name__ == "__main__":
