@@ -118,8 +118,8 @@ def parse_args():
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="",
-        help="评测输出目录（可选，默认自动保存到权重文件所在目录）",
+        default=os.path.join(os.path.dirname(__file__), "result"),
+        help="评测输出目录（默认保存在项目下 result 目录）",
     )
     parser.add_argument("--inspect_data", action="store_true", help="输出原始数据值域统计")
     parser.add_argument(
@@ -415,7 +415,7 @@ def run_benchmark(args):
     threshold_labels = [_format_threshold_label(v) for v in threshold_values]
 
     if args.inspect_only:
-        inspect_dir = args.save_dir.strip() or os.path.abspath(args.data_root)
+        inspect_dir = args.save_dir.strip() or os.path.join(os.path.dirname(__file__), "result")
         os.makedirs(inspect_dir, exist_ok=True)
         inspect_stats = inspect_raw_data_distribution(
             args.data_root,
@@ -472,12 +472,11 @@ def run_benchmark(args):
             raise FileNotFoundError(f"Enhanced 权重不存在: {enhanced_ckpt}")
         models["Enhanced"] = load_model(SimVP_Enhanced, enhanced_ckpt, device)
 
-    # 默认把评测结果放到权重所在目录，避免写入仓库目录
+    # 默认把评测结果放到项目 result 目录，可通过 --save_dir 覆盖
     if args.save_dir.strip():
         save_dir = args.save_dir.strip()
     else:
-        preferred_ckpt = enhanced_ckpt or baseline_ckpt
-        save_dir = os.path.dirname(os.path.abspath(preferred_ckpt))
+        save_dir = os.path.join(os.path.dirname(__file__), "result")
 
     if baseline_ckpt and enhanced_ckpt:
         baseline_dir = os.path.dirname(os.path.abspath(baseline_ckpt))
