@@ -4,15 +4,21 @@ import numpy as np
 from math import exp
 
 class MetricCalculator:
-    def __init__(self, device='cuda'):
+    def __init__(self, device='cuda', thresholds=None, threshold_labels=None, pool_scales=None):
         self.device = device
-        # 对应论文的阈值
+        if thresholds is None:
+            thresholds = [74.0, 133.0, 219.0]
+        if threshold_labels is None:
+            threshold_labels = [str(int(t)) if float(t).is_integer() else str(t) for t in thresholds]
+        if len(thresholds) != len(threshold_labels):
+            raise ValueError("thresholds 与 threshold_labels 长度必须一致")
+
+        self.threshold_labels = list(threshold_labels)
         self.thresholds = {
-            'M': 74.0 / 255.0,    
-            'H': 133.0 / 255.0, # 对应 High/133
-            'E': 219.0 / 255.0  # 对应 Extreme/219
+            label: float(value) / 255.0
+            for label, value in zip(self.threshold_labels, thresholds)
         }
-        self.pool_scales = [1, 4, 16]
+        self.pool_scales = list(pool_scales) if pool_scales is not None else [1, 4, 16]
         self.window = self.create_window(11, 1).to(device)
 
     def compute_batch(self, pred, target):
@@ -97,7 +103,9 @@ class MetricCalculator:
         return ssim_map.mean() if size_average else ssim_map.mean(1).mean(1).mean(1)
 
 class MetricTracker:
-    def __init__(self):
+    def __init__(self, threshold_labels=None, pool_scales=None):
+        self.threshold_labels = list(threshold_labels) if threshold_labels is not None else ['74', '133', '219']
+        self.pool_scales = list(pool_scales) if pool_scales is not None else [1, 4, 16]
         self.reset()
 
     def reset(self):
@@ -124,11 +132,8 @@ class MetricTracker:
                 metrics_avg[k] = np.mean(self.scalars[k])
 
         # 2. 计算 CSI 曲线和平均值
-        threshold_names = ['M', 'H', 'E'] # Moderate, High, Extreme
-        pool_scales = [1, 4, 16]
-
-        for name in threshold_names:
-            for scale in pool_scales:
+        for name in self.threshold_labels:
+            for scale in self.pool_scales:
                 suffix = f"{name}_POOL{scale}"
                 
                 # 获取累积后的 [T] 数组
@@ -150,16 +155,9 @@ class MetricTracker:
                 metrics_curve[f'POD_{suffix}'] = pod_curve
                 metrics_curve[f'FAR_{suffix}'] = far_curve
                 
-                if scale == 1:
-                    metrics_curve[f'CSI_{name}'] = csi_curve
-                    metrics_curve[f'POD_{name}'] = pod_curve
-                    metrics_curve[f'FAR_{name}'] = far_curve
-
                 # 计算全时段平均值 (用于表格)
                 metrics_avg[f'CSI-{name}-POOL{scale}'] = csi_curve.mean()
-                # 为了兼容你的老代码，如果是 POOL1，增加一个简写 Key
-                if scale == 1:
-                    metrics_avg[f'CSI_{name}'] = csi_curve.mean()
-                    metrics_avg[f'FAR_{name}'] = far_curve.mean()
+                metrics_avg[f'POD-{name}-POOL{scale}'] = pod_curve.mean()
+                metrics_avg[f'FAR-{name}-POOL{scale}'] = far_curve.mean()
 
         return metrics_avg, metrics_curve
