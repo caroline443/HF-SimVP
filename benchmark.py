@@ -129,6 +129,17 @@ def parse_args():
     )
     parser.add_argument("--inspect_files", type=int, default=4, help="值域检查采样文件数")
     parser.add_argument("--inspect_events", type=int, default=32, help="每个文件采样事件数")
+    parser.add_argument(
+        "--strict_pred_range",
+        action="store_true",
+        help="严格检查预测/标签是否超出[0,1]，若越界则报错",
+    )
+    parser.add_argument(
+        "--range_epsilon",
+        type=float,
+        default=1e-6,
+        help="值域检查容忍度，默认 1e-6",
+    )
     return parser.parse_args()
 
 
@@ -152,12 +163,37 @@ def evaluate_model(model, loader, calculator, device, max_batches=0):
         pool_scales=calculator.pool_scales,
     )
     batch_avg_curves = {}
+
+    pred_min = float("inf")
+    pred_max = float("-inf")
+    target_min = float("inf")
+    target_max = float("-inf")
+    pred_count = 0
+    target_count = 0
+    pred_lt0 = 0
+    pred_gt1 = 0
+    target_lt0 = 0
+    target_gt1 = 0
+
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(tqdm(loader, desc="Evaluating", leave=False), start=1):
             if max_batches > 0 and batch_idx > max_batches:
                 break
             inputs, targets = inputs.to(device), targets.to(device)
             preds = model(inputs)
+
+            pred_min = min(pred_min, float(preds.min().item()))
+            pred_max = max(pred_max, float(preds.max().item()))
+            target_min = min(target_min, float(targets.min().item()))
+            target_max = max(target_max, float(targets.max().item()))
+
+            pred_count += preds.numel()
+            target_count += targets.numel()
+            pred_lt0 += int((preds < 0.0).sum().item())
+            pred_gt1 += int((preds > 1.0).sum().item())
+            target_lt0 += int((targets < 0.0).sum().item())
+            target_gt1 += int((targets > 1.0).sum().item())
+
             batch_metrics = calculator.compute_batch(preds, targets)
             tracker.update(batch_metrics)
 
@@ -185,7 +221,41 @@ def evaluate_model(model, loader, calculator, device, max_batches=0):
     for key, curves in batch_avg_curves.items():
         batch_avg_curve_metrics[key] = np.mean(np.stack(curves, axis=0), axis=0)
 
-    return avg_metrics, curve_metrics, batch_avg_curve_metrics
+    raw_count_curves = {}
+    for threshold in calculator.threshold_labels:
+        for scale in calculator.pool_scales:
+            suffix = f"{threshold}_POOL{scale}"
+            tp = tracker.counts.get(f"TP_{suffix}")
+            fn = tracker.counts.get(f"FN_{suffix}")
+            fp = tracker.counts.get(f"FP_{suffix}")
+            tn = tracker.counts.get(f"TN_{suffix}")
+            if tp is None or fn is None or fp is None or tn is None:
+                continue
+            raw_count_curves[suffix] = {
+                "TP": tp,
+                "FN": fn,
+                "FP": fp,
+                "TN": tn,
+            }
+
+    value_range_stats = {
+        "pred_min": pred_min,
+        "pred_max": pred_max,
+        "target_min": target_min,
+        "target_max": target_max,
+        "pred_count": pred_count,
+        "target_count": target_count,
+        "pred_lt0": pred_lt0,
+        "pred_gt1": pred_gt1,
+        "target_lt0": target_lt0,
+        "target_gt1": target_gt1,
+        "pred_lt0_ratio": float(pred_lt0) / max(pred_count, 1),
+        "pred_gt1_ratio": float(pred_gt1) / max(pred_count, 1),
+        "target_lt0_ratio": float(target_lt0) / max(target_count, 1),
+        "target_gt1_ratio": float(target_gt1) / max(target_count, 1),
+    }
+
+    return avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats
 
 
 def save_table(rows, out_csv):
@@ -198,6 +268,36 @@ def save_table(rows, out_csv):
 
 def save_temporal_table(rows, out_csv):
     fieldnames = ["Method", "LeadTimeMin", "Aggregation", "Metric", "Threshold", "Pool", "Value"]
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def save_counts_table(rows, out_csv):
+    fieldnames = ["Method", "Threshold", "Pool", "LeadTimeMin", "TP", "FN", "FP", "TN", "CSI", "POD", "FAR"]
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def save_value_range_table(rows, out_csv):
+    fieldnames = [
+        "Method",
+        "pred_min",
+        "pred_max",
+        "target_min",
+        "target_max",
+        "pred_lt0",
+        "pred_gt1",
+        "target_lt0",
+        "target_gt1",
+        "pred_lt0_ratio",
+        "pred_gt1_ratio",
+        "target_lt0_ratio",
+        "target_gt1_ratio",
+    ]
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -266,6 +366,47 @@ def build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_
                             }
                         )
 
+    return rows
+
+
+def build_count_rows(name, raw_count_curves, threshold_labels):
+    rows = []
+    eps = 1e-6
+    for threshold in threshold_labels:
+        for scale in POOL_SCALES:
+            suffix = f"{threshold}_POOL{scale}"
+            pack = raw_count_curves.get(suffix)
+            if pack is None:
+                continue
+
+            tp_curve = pack["TP"]
+            fn_curve = pack["FN"]
+            fp_curve = pack["FP"]
+            tn_curve = pack["TN"]
+
+            for frame_idx, (tp, fn, fp, tn) in enumerate(zip(tp_curve, fn_curve, fp_curve, tn_curve), start=1):
+                tp = float(tp)
+                fn = float(fn)
+                fp = float(fp)
+                tn = float(tn)
+                csi = tp / (tp + fn + fp + eps)
+                pod = tp / (tp + fn + eps)
+                far = fp / (tp + fp + eps)
+                rows.append(
+                    {
+                        "Method": name,
+                        "Threshold": threshold,
+                        "Pool": scale,
+                        "LeadTimeMin": frame_idx * 5,
+                        "TP": f"{tp:.0f}",
+                        "FN": f"{fn:.0f}",
+                        "FP": f"{fp:.0f}",
+                        "TN": f"{tn:.0f}",
+                        "CSI": f"{csi:.6f}",
+                        "POD": f"{pod:.6f}",
+                        "FAR": f"{far:.6f}",
+                    }
+                )
     return rows
 
 
@@ -363,25 +504,68 @@ def run_benchmark(args):
 
     rows = []
     temporal_rows = []
+    count_rows = []
+    range_rows = []
     for name, model in models.items():
         print(f"Running {name}...")
-        avg_metrics, curve_metrics, batch_avg_curve_metrics = evaluate_model(
+        avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats = evaluate_model(
             model,
             loader,
             calculator,
             device,
             max_batches=args.max_batches,
         )
+
+        range_rows.append(
+            {
+                "Method": name,
+                "pred_min": f"{value_range_stats['pred_min']:.6f}",
+                "pred_max": f"{value_range_stats['pred_max']:.6f}",
+                "target_min": f"{value_range_stats['target_min']:.6f}",
+                "target_max": f"{value_range_stats['target_max']:.6f}",
+                "pred_lt0": value_range_stats["pred_lt0"],
+                "pred_gt1": value_range_stats["pred_gt1"],
+                "target_lt0": value_range_stats["target_lt0"],
+                "target_gt1": value_range_stats["target_gt1"],
+                "pred_lt0_ratio": f"{value_range_stats['pred_lt0_ratio']:.8f}",
+                "pred_gt1_ratio": f"{value_range_stats['pred_gt1_ratio']:.8f}",
+                "target_lt0_ratio": f"{value_range_stats['target_lt0_ratio']:.8f}",
+                "target_gt1_ratio": f"{value_range_stats['target_gt1_ratio']:.8f}",
+            }
+        )
+
+        if args.strict_pred_range:
+            eps = args.range_epsilon
+            has_out_of_range = (
+                value_range_stats["pred_min"] < -eps
+                or value_range_stats["pred_max"] > 1.0 + eps
+                or value_range_stats["target_min"] < -eps
+                or value_range_stats["target_max"] > 1.0 + eps
+            )
+            if has_out_of_range:
+                raise ValueError(
+                    f"[{name}] 检测到超出[0,1]值域的数据："
+                    f"pred_min={value_range_stats['pred_min']:.6f}, "
+                    f"pred_max={value_range_stats['pred_max']:.6f}, "
+                    f"target_min={value_range_stats['target_min']:.6f}, "
+                    f"target_max={value_range_stats['target_max']:.6f}"
+                )
+
         rows.append(build_summary_row(name, avg_metrics, curve_metrics, batch_avg_curve_metrics, threshold_labels))
         temporal_rows.extend(build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_labels))
+        count_rows.extend(build_count_rows(name, raw_count_curves, threshold_labels))
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_csv = os.path.join(save_dir, f"benchmark_metrics_{timestamp}.csv")
     summary_csv = os.path.join(save_dir, f"benchmark_summary_{timestamp}.csv")
     temporal_csv = os.path.join(save_dir, f"benchmark_temporal_{timestamp}.csv")
+    counts_csv = os.path.join(save_dir, f"benchmark_counts_{timestamp}.csv")
+    range_csv = os.path.join(save_dir, f"benchmark_value_range_{timestamp}.csv")
     save_table(rows, out_csv)
     save_table(rows, summary_csv)
     save_temporal_table(temporal_rows, temporal_csv)
+    save_counts_table(count_rows, counts_csv)
+    save_value_range_table(range_rows, range_csv)
 
     print("=" * 90)
     for row in rows:
@@ -389,6 +573,8 @@ def run_benchmark(args):
     print("=" * 90)
     print(f"Benchmark summary saved to: {summary_csv}")
     print(f"Benchmark temporal saved to: {temporal_csv}")
+    print(f"Benchmark raw counts saved to: {counts_csv}")
+    print(f"Benchmark value range saved to: {range_csv}")
     print(f"Backward-compatible metrics CSV saved to: {out_csv}")
 
 
