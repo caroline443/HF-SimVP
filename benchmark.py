@@ -133,6 +133,8 @@ def parse_args():
 
 
 def load_model(model_ctor, ckpt_path, device):
+    import torch
+
     model = model_ctor(in_shape=(13, 1, 384, 384)).to(device)
     state_dict = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state_dict)
