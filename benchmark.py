@@ -143,6 +143,8 @@ def load_model(model_ctor, ckpt_path, device):
 
 
 def evaluate_model(model, loader, calculator, device, max_batches=0):
+    import torch
+
     from utils_metrics import MetricTracker
 
     tracker = MetricTracker(
