@@ -29,8 +29,9 @@ CONFIG = {
     "GRAD_NORM_GUARD": 10.0,  # 梯度范数过大时跳过更新
     "LOSS_GUARD": 5.0,  # loss 异常上限
     "LOSS_ALPHA_ENHANCED": 0.6,  # Enhanced 损失组合权重
-    "LOSS_WARMUP_EPOCHS": 15,
-    "LOSS_EXT_MAX_WEIGHT": 3.0,
+    "LOSS_WARMUP_EPOCHS": 10,     # warm-up 缩短到 10 epoch，让极端权重更早生效
+    "LOSS_EXT_MAX_WEIGHT": 8.0,   # 极端像素权重 3.0 -> 8.0，强化对 219 阈值的惩罚
+    "LOSS_FOCAL_WEIGHT": 0.15,    # Focal 分支权重，专门针对极端像素漏报
     "LOG_EVERY": 100,
     "NUM_WORKERS": 4,     
     "CKPT_DIR": os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")),
@@ -55,54 +56,93 @@ def get_logger(name, save_dir):
     logger.addHandler(logging.StreamHandler())
     return logger
 
-# --- 动态预热混合损失 (只用于 Enhanced) ---
+# --- 动态预热混合损失 V2 (只用于 Enhanced) ---
 class HybridLoss(nn.Module):
-    def __init__(self, device, alpha=0.6, warmup_epochs=15, max_weight=3.0):
+    """
+    三分支混合损失：
+      1. loss_structure : MS-SSIM，保结构
+      2. loss_intensity : 分级加权 L1，强化中/高/极端降水
+      3. loss_focal     : 极端像素 Focal BCE，专门压制极端降水漏报
+
+    改动说明（V2）：
+      - ext_weight: 3.0 -> 8.0，对 thresh_ext(219) 以上像素施加更强惩罚
+      - warmup_epochs: 15 -> 10，让极端权重更早收敛到最大值
+      - 新增 focal_weight 分支：只对 target > thresh_ext 的像素计算
+        binary focal loss（gamma=2），逼迫模型不漏报极端降水
+    """
+    def __init__(self, device, alpha=0.6, warmup_epochs=10, max_weight=8.0, focal_weight=0.15):
         super().__init__()
         self.device = device
         self.alpha = alpha
         self.warmup_epochs = warmup_epochs
         self.max_weight = max_weight
+        self.focal_weight = focal_weight
+        self.focal_gamma = 2.0          # focal loss 聚焦参数，固定为 2
         self.l1_loss = nn.L1Loss(reduction='none')
         self.ssim_module = MS_SSIM(data_range=1.0, size_average=True, channel=1, win_size=3).to(device)
-        
-        self.thresh_mid = 74.0 / 255.0
+
+        self.thresh_mid  = 74.0  / 255.0
         self.thresh_high = 133.0 / 255.0
-        self.thresh_ext = 210.0 / 255.0 
-        
+        self.thresh_ext  = 219.0 / 255.0  # 与 benchmark 阈值对齐（原为 210）
+
         self.current_epoch = 0
 
     def set_epoch(self, epoch):
         self.current_epoch = epoch
 
     def forward(self, pred, target):
-        pred = pred.float()
+        pred   = pred.float()
         target = target.float()
 
-        # Warm-up 策略
+        # --- 1. Warm-up：极端权重从 1.0 线性增长到 max_weight ---
         if self.current_epoch < self.warmup_epochs:
             ext_weight = 1.0 + (self.max_weight - 1.0) * (self.current_epoch / self.warmup_epochs)
         else:
             ext_weight = self.max_weight
-            
+
+        # --- 2. 分级加权 L1 ---
         weights = torch.ones_like(target)
-        weights[target > self.thresh_mid] = 2.0
+        weights[target > self.thresh_mid]  = 2.0
         weights[target > self.thresh_high] = 5.0
-        weights[target > self.thresh_ext] = ext_weight 
+        weights[target > self.thresh_ext]  = ext_weight
 
         l1_pixel = self.l1_loss(pred, target)
         loss_intensity = torch.mean(weights * l1_pixel)
-        
+
+        # --- 3. MS-SSIM 结构损失 ---
         if self.training:
-            pred_n = pred + torch.rand_like(pred) * 1e-6
+            pred_n   = pred   + torch.rand_like(pred)   * 1e-6
             target_n = target + torch.rand_like(target) * 1e-6
         else:
             pred_n, target_n = pred, target
-            
+
         b, t, c, h, w = pred.shape
-        loss_structure = 1 - self.ssim_module(pred_n.reshape(-1, c, h, w), target_n.reshape(-1, c, h, w))
-        
-        return (1 - self.alpha) * loss_structure + self.alpha * loss_intensity
+        loss_structure = 1 - self.ssim_module(
+            pred_n.reshape(-1, c, h, w),
+            target_n.reshape(-1, c, h, w)
+        )
+
+        # --- 4. 极端像素 Focal Loss ---
+        # 只在 target > thresh_ext 的位置计算，逼迫模型不漏报极端降水
+        # 使用 focal BCE：FL = -alpha_t * (1-p_t)^gamma * log(p_t)
+        ext_mask = (target > self.thresh_ext)  # [B,T,C,H,W] bool
+        if ext_mask.any():
+            pred_ext   = pred[ext_mask].clamp(1e-6, 1 - 1e-6)
+            target_ext = target[ext_mask]
+            # 二值化：target > thresh_ext 视为正样本（=1）
+            target_bin = torch.ones_like(target_ext)
+            bce = -(target_bin * torch.log(pred_ext) +
+                    (1 - target_bin) * torch.log(1 - pred_ext))
+            # focal 调制：(1 - pred)^gamma 让难样本（预测值低）获得更大梯度
+            focal_factor = (1 - pred_ext) ** self.focal_gamma
+            loss_focal = (focal_factor * bce).mean()
+        else:
+            loss_focal = torch.tensor(0.0, device=self.device)
+
+        # --- 5. 三分支加权求和 ---
+        # alpha 控制结构 vs 强度的比例，focal 分支独立叠加
+        loss_main = (1 - self.alpha) * loss_structure + self.alpha * loss_intensity
+        return loss_main + self.focal_weight * loss_focal
 
 def train_pipeline(mode):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -130,13 +170,18 @@ def train_pipeline(mode):
         criterion = nn.MSELoss() 
         train_lr = CONFIG["LR"]
     else: 
-        logger.info("🔥 正在初始化 Enhanced (SpatialAttn + HybridLoss)...")
+        logger.info(
+            f"🔥 正在初始化 Enhanced (SpatialAttn + HybridLoss) | "
+            f"alpha={CONFIG['LOSS_ALPHA_ENHANCED']} | warmup={CONFIG['LOSS_WARMUP_EPOCHS']} | "
+            f"ext_weight={CONFIG['LOSS_EXT_MAX_WEIGHT']} | focal_weight={CONFIG['LOSS_FOCAL_WEIGHT']}"
+        )
         model = SimVP_Enhanced(in_shape=(in_len, 1, 384, 384)).to(device)
         criterion = HybridLoss(
             device,
             alpha=CONFIG["LOSS_ALPHA_ENHANCED"],
             warmup_epochs=CONFIG["LOSS_WARMUP_EPOCHS"],
             max_weight=CONFIG["LOSS_EXT_MAX_WEIGHT"],
+            focal_weight=CONFIG["LOSS_FOCAL_WEIGHT"],
         ).to(device)
         train_lr = CONFIG["LR_ENHANCED"]
     
