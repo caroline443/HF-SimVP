@@ -8,9 +8,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# 图表显示用的阈值别名（M/H/E）
 THRESHOLDS = ["M", "H", "E"]
 POOL_SCALES = [1, 4, 16]
 WEATHER_METRICS = ["CSI", "POD", "FAR"]
+
+# benchmark.py 输出的 CSV 里用的是真实数字标签（24/133/219 等）
+# 这里定义别名到数字的映射，供 summary 读取和图表标注使用
+THRESHOLD_ALIAS = {
+    "M": "74",    # 中等降水阈值，对应 74/255
+    "H": "133",   # 大雨阈值，对应 133/255
+    "E": "219",   # 极端强降水阈值，对应 219/255
+}
 
 
 def parse_args():
@@ -83,6 +92,7 @@ def read_temporal_csv(path):
                 {
                     "Method": row["Method"],
                     "LeadTimeMin": int(float(row["LeadTimeMin"])),
+                    "Aggregation": row.get("Aggregation", "batch_avg"),  # 存在则读取，否则默认 batch_avg
                     "Metric": row["Metric"],
                     "Threshold": row["Threshold"],
                     "Pool": int(float(row["Pool"])),
@@ -108,7 +118,13 @@ def method_colors(methods):
 
 
 def get_summary_value(summary_rows, method, metric, threshold, pool):
-    key = f"{metric}-{threshold}-POOL{pool}"
+    """
+    从 summary CSV 读取指标值。
+    threshold 传入别名（M/H/E），自动映射到 CSV 里的数字标签（74/133/219）。
+    主列（无后缀）已是 batch_avg 口径，直接读取即可。
+    """
+    numeric_label = THRESHOLD_ALIAS.get(threshold, threshold)
+    key = f"{metric}-{numeric_label}-POOL{pool}"
     for row in summary_rows:
         if row["Method"] == method:
             return row.get(key, np.nan)
@@ -176,13 +192,20 @@ def plot_weather_pools(summary_rows, methods, colors, out_dir, dpi):
     return save_figure(fig, out_dir, "fig_csi_pool_sensitivity", dpi)
 
 
-def temporal_curve(rows, method, metric, threshold, pool):
+def temporal_curve(rows, method, metric, threshold, pool, aggregation="batch_avg"):
+    """
+    从 temporal CSV 提取时序曲线。
+    threshold 传入别名（M/H/E），自动映射到 CSV 里的数字标签。
+    aggregation 默认取 batch_avg（与文献对齐口径），不会把 global_count 曲线混入。
+    """
+    numeric_label = THRESHOLD_ALIAS.get(threshold, threshold)
     selected = [
         r for r in rows
         if r["Method"] == method
         and r["Metric"] == metric
-        and r["Threshold"] == threshold
+        and r["Threshold"] == numeric_label
         and r["Pool"] == pool
+        and r.get("Aggregation", "batch_avg") == aggregation
     ]
     selected.sort(key=lambda z: z["LeadTimeMin"])
     xs = [r["LeadTimeMin"] for r in selected]

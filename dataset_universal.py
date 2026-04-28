@@ -17,13 +17,20 @@ class SEVIRDataset(Dataset):
         self.pred_len = pred_len
         self.total_len = input_len + pred_len
         
-        # --- 🔥 [核心修改] 定义滑窗步长 (Stride) ---
-        # 训练时：stride=12 (每1小时滑动一次)，数据量翻倍，提升泛化
-        # 测试时：stride=49 (不重叠)，保证评估公正
+        # --- 滑窗步长 (Stride) ---
+        # 训练时：stride=12（每 10 分钟滑动一次），扩充样本量，提升泛化
+        # 测试时：stride=49（等于事件总帧数，完全不重叠）
+        #
+        # [文献对齐说明]
+        # EarthFormer / SimCast / PreDiff 等论文的测试集均采用不重叠切分：
+        # 每个 49 帧事件只取一个 [0:25] 窗口（input_len=13, pred_len=12 共 25 帧）。
+        # stride=49 保证每个事件最多产生 1 个测试样本（49-25+1=25 < 49，
+        # 实际只有 t_start=0 满足条件），与文献口径一致。
+        # 若改为 stride<25 则会产生重叠测试样本，导致指标虚高，不可与文献直接对比。
         if mode == 'train':
-            self.stride = 12 
+            self.stride = 12
         else:
-            self.stride = 49 
+            self.stride = 49  # 不重叠，与文献评测口径一致
         
         # 1. 扫描所有 .h5 文件
         all_files = sorted(glob.glob(os.path.join(data_root, '*.h5')))
@@ -81,11 +88,17 @@ class SEVIRDataset(Dataset):
                     # SEVIR VIL 通常是 (N, 49, 384, 384)
                     shape = hf[data_source].shape
                     event_count = shape[0]
-                    T_max = 49 # SEVIR 标准固定长度
-                    
-                    # --- 🔥 [核心修改] 滑窗切分 ---
+                    # T_max 从数据实际 shape 读取，兼容非标准文件
+                    # SEVIR VIL 标准为 49 帧；若文件维度为 (N, H, W, T) 则取 shape[-1]
+                    if shape[-1] == 49:
+                        T_max = shape[-1]   # (N, H, W, T) 格式
+                    else:
+                        T_max = shape[1]    # (N, T, H, W) 格式，标准 SEVIR
+
+                    # 滑窗切分
+                    # 测试时 stride=49，每个事件只产生 1 个样本（t_start=0），
+                    # 与文献不重叠评测口径一致
                     for i in range(event_count):
-                        # 只要剩余长度够 25 帧，就切一个样本
                         for t_start in range(0, T_max - self.total_len + 1, self.stride):
                             self.sample_indices.append({
                                 'path': f_path,
