@@ -1,0 +1,9 @@
+Generated at: 2026-04-28 10:29:21
+F:\zyx\HF-SimVP\result\20260428_102526\fig_weather_threshold_pool1.png
+F:\zyx\HF-SimVP\result\20260428_102526\fig_weather_threshold_pool1.pdf
+F:\zyx\HF-SimVP\result\20260428_102526\fig_csi_pool_sensitivity.png
+F:\zyx\HF-SimVP\result\20260428_102526\fig_csi_pool_sensitivity.pdf
+F:\zyx\HF-SimVP\result\20260428_102526\fig_temporal_decay_pool1.png
+F:\zyx\HF-SimVP\result\20260428_102526\fig_temporal_decay_pool1.pdf
+F:\zyx\HF-SimVP\result\20260428_102526\fig_temporal_metrics_pool1.png
+F:\zyx\HF-SimVP\result\20260428_102526\fig_temporal_metrics_pool1.pdf
