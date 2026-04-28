@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from tqdm import tqdm
 import os
 import argparse
@@ -25,7 +25,7 @@ CONFIG = {
     "LR_ENHANCED": 0.0001,  # Enhanced 更保守，降低失稳风险
     "EPOCHS": 50,       # 跑满 50 轮
     "PATIENCE": 50,     # 禁用 Early Stopping
-    "GRAD_CLIP": 0.1,   # 防爆阀
+    "GRAD_CLIP": 1.0,   # 梯度裁剪阈值（0.1 过于激进，改为 1.0）
     "GRAD_NORM_GUARD": 10.0,  # 梯度范数过大时跳过更新
     "LOSS_GUARD": 5.0,  # loss 异常上限
     "LOSS_ALPHA_ENHANCED": 0.6,  # Enhanced 损失组合权重
@@ -137,7 +137,7 @@ class HybridLoss(nn.Module):
             focal_factor = (1 - pred_ext) ** self.focal_gamma
             loss_focal = (focal_factor * bce).mean()
         else:
-            loss_focal = torch.tensor(0.0, device=self.device)
+            loss_focal = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
 
         # --- 5. 三分支加权求和 ---
         # alpha 控制结构 vs 强度的比例，focal 分支独立叠加
@@ -190,7 +190,7 @@ def train_pipeline(mode):
         optimizer, max_lr=train_lr, steps_per_epoch=len(train_loader), epochs=CONFIG["EPOCHS"],
         pct_start=0.2, div_factor=25, final_div_factor=100
     )
-    scaler = GradScaler(enabled=amp_enabled)
+    scaler = GradScaler('cuda', enabled=amp_enabled)
     metrics_calc = MetricCalculator(device)
     logger.info(
         f"🔧 Optimizer配置 | lr={train_lr:.6f} | amp={amp_enabled} | "
@@ -220,7 +220,7 @@ def train_pipeline(mode):
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad(set_to_none=True)
             
-            with autocast(enabled=amp_enabled):
+            with autocast('cuda', enabled=amp_enabled):
                 outputs = model(inputs)
             # 在 FP32 下计算损失，减少 MS-SSIM 数值不稳定
             loss = criterion(outputs.float(), targets.float())
@@ -266,20 +266,20 @@ def train_pipeline(mode):
         with torch.no_grad():
             for inputs, targets in tqdm(val_loader, desc="Validating", leave=False):
                 inputs, targets = inputs.to(device), targets.to(device)
-                with autocast(enabled=amp_enabled):
+                with autocast('cuda', enabled=amp_enabled):
                     outputs = model(inputs)
                 batch_metrics = metrics_calc.compute_batch(outputs.float(), targets.float())
                 tracker.update(batch_metrics)
 
         avg_metrics, _ = tracker.result()
-        avg_csi = avg_metrics['CSI_M']
-        avg_ssim = avg_metrics['SSIM']
+        avg_csi = avg_metrics.get('CSI-74-POOL1', 0.0)
+        avg_ssim = avg_metrics.get('SSIM', 0.0)
         avg_loss = train_loss / max(1, valid_steps)
         avg_grad = grad_norm_sum / max(1, grad_norm_count)
         current_lr = optimizer.param_groups[0]["lr"]
         
         logger.info(
-            f"Ep {epoch+1} | Loss: {avg_loss:.4f} | CSI-M: {avg_csi:.4f} | SSIM: {avg_ssim:.4f} | "
+            f"Ep {epoch+1} | Loss: {avg_loss:.4f} | CSI-74: {avg_csi:.4f} | SSIM: {avg_ssim:.4f} | "
             f"Grad(avg/max): {avg_grad:.4f}/{grad_norm_max:.4f} | Skip(loss/grad): {skip_loss_steps}/{skip_grad_steps} | "
             f"ValidSteps: {valid_steps}/{len(train_loader)} | LR: {current_lr:.6e}"
         )
