@@ -25,8 +25,8 @@ THRESHOLD_ALIAS = {
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate paper-ready figures from benchmark CSV files")
     parser.add_argument("--results_dir", type=str, default="", help="目录下自动寻找最新 benchmark_summary/temporal CSV")
-    parser.add_argument("--summary_csv", type=str, default="", help="benchmark_summary_*.csv 路径")
-    parser.add_argument("--temporal_csv", type=str, default="", help="benchmark_temporal_*.csv 路径")
+    parser.add_argument("--summary_csv", type=str, default="", help="summary.csv 路径（可选，优先于 --results_dir）")
+    parser.add_argument("--temporal_csv", type=str, default="", help="temporal.csv 路径（可选，优先于 --results_dir）")
     parser.add_argument("--out_dir", type=str, default="", help="图片输出目录，默认放在 CSV 同级目录")
     parser.add_argument("--dpi", type=int, default=400, help="导出分辨率")
     parser.add_argument("--pool", type=int, default=1, choices=[1, 4, 16], help="用于时序图的池化尺度")
@@ -34,12 +34,36 @@ def parse_args():
     return parser.parse_args()
 
 
-def _latest_file(results_dir, pattern):
-    files = glob.glob(os.path.join(results_dir, pattern))
-    if not files:
-        return ""
-    files.sort(key=os.path.getmtime)
-    return files[-1]
+def _latest_run_dir(results_dir):
+    """
+    在 results_dir 下找最新的时间戳子文件夹（名称格式 YYYYMMDD_HHMMSS）。
+    如果找不到子文件夹，则回退到 results_dir 本身（兑容旧结构）。
+    """
+    subdirs = [
+        os.path.join(results_dir, d)
+        for d in os.listdir(results_dir)
+        if os.path.isdir(os.path.join(results_dir, d))
+        and len(d) == 15  # YYYYMMDD_HHMMSS
+    ]
+    if not subdirs:
+        return results_dir  # 兑容旧结构：文件直接放在 results_dir 下
+    subdirs.sort(key=os.path.getmtime)
+    return subdirs[-1]  # 最新的一次运行
+
+
+def _find_csv(run_dir, new_name, legacy_pattern):
+    """
+    先尝试新文件名（如 summary.csv），找不到则兑容旧文件名模式。
+    """
+    new_path = os.path.join(run_dir, new_name)
+    if os.path.isfile(new_path):
+        return new_path
+    # 兑容旧命名（benchmark_summary_*.csv 等）
+    legacy = glob.glob(os.path.join(run_dir, legacy_pattern))
+    if legacy:
+        legacy.sort(key=os.path.getmtime)
+        return legacy[-1]
+    return ""
 
 
 def resolve_inputs(args):
@@ -48,10 +72,13 @@ def resolve_inputs(args):
 
     if args.results_dir.strip():
         results_dir = args.results_dir.strip()
+        run_dir = _latest_run_dir(results_dir)
+        if run_dir != results_dir:
+            print(f"[Info] 自动选取最新运行目录: {run_dir}")
         if not summary_csv:
-            summary_csv = _latest_file(results_dir, "benchmark_summary_*.csv")
+            summary_csv = _find_csv(run_dir, "summary.csv", "benchmark_summary_*.csv")
         if not temporal_csv:
-            temporal_csv = _latest_file(results_dir, "benchmark_temporal_*.csv")
+            temporal_csv = _find_csv(run_dir, "temporal.csv", "benchmark_temporal_*.csv")
 
     if not summary_csv or not os.path.isfile(summary_csv):
         raise FileNotFoundError("未找到 summary CSV，请传 --summary_csv 或 --results_dir")

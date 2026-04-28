@@ -492,22 +492,13 @@ def run_benchmark(args):
             raise FileNotFoundError(f"Enhanced 权重不存在: {enhanced_ckpt}")
         models["Enhanced"] = load_model(SimVP_Enhanced, enhanced_ckpt, device)
 
-    # 默认把评测结果放到项目 result 目录，可通过 --save_dir 覆盖
-    if args.save_dir.strip():
-        save_dir = args.save_dir.strip()
-    else:
-        save_dir = os.path.join(os.path.dirname(__file__), "result")
-
-    if baseline_ckpt and enhanced_ckpt:
-        baseline_dir = os.path.dirname(os.path.abspath(baseline_ckpt))
-        enhanced_dir = os.path.dirname(os.path.abspath(enhanced_ckpt))
-        if baseline_dir != enhanced_dir and not args.save_dir.strip():
-            print(
-                "[Info] baseline 与 enhanced 权重不在同一路径，"
-                f"结果默认保存到: {save_dir}"
-            )
-
+    # 结果目录：base_dir/YYYYMMDD_HHMMSS/
+    # --save_dir 指定的是 base_dir（父目录），每次运行自动在其下建时间戳子文件夹
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = args.save_dir.strip() if args.save_dir.strip() else os.path.join(os.path.dirname(__file__), "result")
+    save_dir = os.path.join(base_dir, timestamp)
     os.makedirs(save_dir, exist_ok=True)
+    print(f"[Info] 结果将保存到: {save_dir}")
 
     if args.inspect_data:
         inspect_stats = inspect_raw_data_distribution(
@@ -574,13 +565,11 @@ def run_benchmark(args):
         temporal_rows.extend(build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_labels))
         count_rows.extend(build_count_rows(name, raw_count_curves, threshold_labels))
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_csv = os.path.join(save_dir, f"benchmark_metrics_{timestamp}.csv")
-    summary_csv = os.path.join(save_dir, f"benchmark_summary_{timestamp}.csv")
-    temporal_csv = os.path.join(save_dir, f"benchmark_temporal_{timestamp}.csv")
-    counts_csv = os.path.join(save_dir, f"benchmark_counts_{timestamp}.csv")
-    range_csv = os.path.join(save_dir, f"benchmark_value_range_{timestamp}.csv")
-    save_table(rows, out_csv)
+    # 文件名不再带时间戳，时间信息已在文件夹名里
+    summary_csv  = os.path.join(save_dir, "summary.csv")
+    temporal_csv = os.path.join(save_dir, "temporal.csv")
+    counts_csv   = os.path.join(save_dir, "counts.csv")
+    range_csv    = os.path.join(save_dir, "value_range.csv")
     save_table(rows, summary_csv)
     save_temporal_table(temporal_rows, temporal_csv)
     save_counts_table(count_rows, counts_csv)
@@ -590,11 +579,11 @@ def run_benchmark(args):
     for row in rows:
         print(row)
     print("=" * 90)
-    print(f"Benchmark summary saved to: {summary_csv}")
-    print(f"Benchmark temporal saved to: {temporal_csv}")
-    print(f"Benchmark raw counts saved to: {counts_csv}")
-    print(f"Benchmark value range saved to: {range_csv}")
-    print(f"Backward-compatible metrics CSV saved to: {out_csv}")
+    print(f"Output dir     : {save_dir}")
+    print(f"Summary CSV    : {summary_csv}")
+    print(f"Temporal CSV   : {temporal_csv}")
+    print(f"Counts CSV     : {counts_csv}")
+    print(f"Value range CSV: {range_csv}")
 
 
 if __name__ == "__main__":
