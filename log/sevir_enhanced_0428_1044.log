@@ -1,0 +1,9 @@
+2026-04-28 10:44:54,829 - 🚀 启动 V3.1 训练 | 模式: enhanced | Clip: 0.1
+2026-04-28 10:44:54,883 - Train Samples: 52839 | Val Samples: 2780
+2026-04-28 10:44:54,883 - 🔥 正在初始化 Enhanced (SpatialAttn + HybridLoss) | alpha=0.6 | warmup=10 | ext_weight=8.0 | focal_weight=0.15
+2026-04-28 10:44:56,082 - 🔧 Optimizer配置 | lr=0.000100 | amp=True | loss_guard=5.0 | grad_guard=10.0
+2026-04-28 11:15:23,163 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-28 11:15:32,312 - ⚠️ Abnormal GradNorm (14.491522), skipping step
+2026-04-28 11:16:12,674 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-28 11:30:52,410 - ⚠️ Abnormal GradNorm (10.972311), skipping step
+2026-04-28 11:31:58,716 - ⚠️ Abnormal GradNorm (22.089340), skipping step

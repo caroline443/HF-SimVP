@@ -1,0 +1,312 @@
+2026-04-28 15:55:36,356 - 🚀 启动 V3.1 训练 | 模式: enhanced | Clip: 1.0
+2026-04-28 15:55:36,432 - Train Samples: 52839 | Val Samples: 2780
+2026-04-28 15:55:36,432 - 🔥 正在初始化 Enhanced (SpatialAttn + HybridLoss) | alpha=0.6 | warmup=10 | ext_weight=8.0 | focal_weight=0.15
+2026-04-28 15:55:37,580 - 🔧 Optimizer配置 | lr=0.000100 | amp=True | loss_guard=5.0 | grad_guard=10.0
+2026-04-28 16:26:16,142 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-28 16:26:25,444 - ⚠️ Abnormal GradNorm (16.444107), skipping step
+2026-04-28 16:27:06,608 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-28 16:38:05,071 - ⚠️ Abnormal GradNorm (10.683400), skipping step
+2026-04-28 16:42:57,501 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-28 17:01:23,556 - Ep 1 | Loss: 0.3260 | CSI-74: 0.5045 | SSIM: 0.4398 | Grad(avg/max): 0.6762/8.9050 | Skip(loss/grad): 0/8 | ValidSteps: 6597/6605 | LR: 6.343717e-06
+2026-04-28 17:01:23,577 - 🔥 New Best CSI: 0.5045
+2026-04-28 17:04:03,059 - ⚠️ Abnormal GradNorm (11.748196), skipping step
+2026-04-28 17:11:36,080 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-28 17:20:04,893 - ⚠️ Abnormal GradNorm (18.749876), skipping step
+2026-04-28 17:23:16,396 - ⚠️ Abnormal GradNorm (16.165447), skipping step
+2026-04-28 17:23:42,933 - ⚠️ Abnormal GradNorm (18.102859), skipping step
+2026-04-28 18:07:24,988 - Ep 2 | Loss: 0.2556 | CSI-74: 0.5318 | SSIM: 0.5437 | Grad(avg/max): 1.2109/9.1945 | Skip(loss/grad): 0/26 | ValidSteps: 6579/6605 | LR: 1.312188e-05
+2026-04-28 18:07:24,998 - 🔥 New Best CSI: 0.5318
+2026-04-28 18:07:39,582 - ⚠️ Abnormal GradNorm (50.311409), skipping step
+2026-04-28 18:09:23,242 - ⚠️ Abnormal GradNorm (13.844646), skipping step
+2026-04-28 18:15:40,153 - ⚠️ Abnormal GradNorm (13.219892), skipping step
+2026-04-28 18:17:17,526 - ⚠️ Abnormal GradNorm (12.193125), skipping step
+2026-04-28 18:21:24,908 - ⚠️ Abnormal GradNorm (13.015141), skipping step
+2026-04-28 19:13:56,574 - Ep 3 | Loss: 0.2398 | CSI-74: 0.5480 | SSIM: 0.6026 | Grad(avg/max): 1.3945/9.9885 | Skip(loss/grad): 0/28 | ValidSteps: 6577/6605 | LR: 2.367247e-05
+2026-04-28 19:13:56,583 - 🔥 New Best CSI: 0.5480
+2026-04-28 19:15:38,663 - ⚠️ Abnormal GradNorm (12.900662), skipping step
+2026-04-28 19:16:24,201 - ⚠️ Abnormal GradNorm (18.335993), skipping step
+2026-04-28 19:17:43,857 - ⚠️ Abnormal GradNorm (22.001968), skipping step
+2026-04-28 19:18:45,091 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-28 19:20:10,030 - ⚠️ Abnormal GradNorm (16.213366), skipping step
+2026-04-28 20:20:28,508 - Ep 4 | Loss: 0.2240 | CSI-74: 0.5701 | SSIM: 0.6680 | Grad(avg/max): 1.3687/9.9371 | Skip(loss/grad): 0/32 | ValidSteps: 6573/6605 | LR: 3.696409e-05
+2026-04-28 20:20:28,515 - 🔥 New Best CSI: 0.5701
+2026-04-28 20:20:46,053 - ⚠️ Abnormal GradNorm (15.450941), skipping step
+2026-04-28 20:21:19,875 - ⚠️ Abnormal GradNorm (10.799722), skipping step
+2026-04-28 20:21:46,560 - ⚠️ Abnormal GradNorm (22.959190), skipping step
+2026-04-28 20:22:13,316 - ⚠️ Abnormal GradNorm (11.894334), skipping step
+2026-04-28 20:22:33,605 - ⚠️ Abnormal GradNorm (13.750916), skipping step
+2026-04-28 21:27:04,277 - Ep 5 | Loss: 0.2133 | CSI-74: 0.5326 | SSIM: 0.6024 | Grad(avg/max): 1.2666/9.9923 | Skip(loss/grad): 0/35 | ValidSteps: 6570/6605 | LR: 5.170662e-05
+2026-04-28 21:27:25,443 - ⚠️ Abnormal GradNorm (19.594395), skipping step
+2026-04-28 21:31:34,153 - ⚠️ Abnormal GradNorm (28.960985), skipping step
+2026-04-28 21:32:20,140 - ⚠️ Abnormal GradNorm (12.912681), skipping step
+2026-04-28 21:35:10,904 - ⚠️ Abnormal GradNorm (18.535942), skipping step
+2026-04-28 21:35:40,351 - ⚠️ Abnormal GradNorm (14.980098), skipping step
+2026-04-28 22:33:19,722 - Ep 6 | Loss: 0.2073 | CSI-74: 0.5603 | SSIM: 0.6963 | Grad(avg/max): 1.1084/9.6058 | Skip(loss/grad): 0/31 | ValidSteps: 6574/6605 | LR: 6.648628e-05
+2026-04-28 22:33:37,131 - ⚠️ Abnormal GradNorm (12.862532), skipping step
+2026-04-28 22:35:43,305 - ⚠️ Abnormal GradNorm (24.414612), skipping step
+2026-04-28 22:37:42,597 - ⚠️ Abnormal GradNorm (10.657554), skipping step
+2026-04-28 22:38:12,088 - ⚠️ Abnormal GradNorm (12.557084), skipping step
+2026-04-28 22:38:52,858 - ⚠️ Abnormal GradNorm (10.591221), skipping step
+2026-04-28 23:39:25,542 - Ep 7 | Loss: 0.2058 | CSI-74: 0.5958 | SSIM: 0.6990 | Grad(avg/max): 0.9828/9.9459 | Skip(loss/grad): 0/36 | ValidSteps: 6569/6605 | LR: 7.985175e-05
+2026-04-28 23:39:25,549 - 🔥 New Best CSI: 0.5958
+2026-04-28 23:41:06,917 - ⚠️ Abnormal GradNorm (50.224709), skipping step
+2026-04-28 23:42:50,536 - ⚠️ Abnormal GradNorm (15.822423), skipping step
+2026-04-28 23:47:28,640 - ⚠️ Abnormal GradNorm (12.421316), skipping step
+2026-04-28 23:48:03,068 - ⚠️ Abnormal GradNorm (15.354882), skipping step
+2026-04-28 23:48:03,648 - ⚠️ Abnormal GradNorm (11.356408), skipping step
+2026-04-29 00:44:54,607 - Ep 8 | Loss: 0.2040 | CSI-74: 0.3803 | SSIM: 0.6746 | Grad(avg/max): 0.8846/9.8620 | Skip(loss/grad): 0/24 | ValidSteps: 6581/6605 | LR: 9.053655e-05
+2026-04-29 00:51:58,399 - ⚠️ Abnormal GradNorm (23.357424), skipping step
+2026-04-29 00:52:12,959 - ⚠️ Abnormal GradNorm (13.284387), skipping step
+2026-04-29 00:56:02,169 - ⚠️ Abnormal GradNorm (11.181374), skipping step
+2026-04-29 00:57:25,125 - ⚠️ Abnormal GradNorm (36.637653), skipping step
+2026-04-29 00:57:57,033 - ⚠️ Abnormal GradNorm (11.346916), skipping step
+2026-04-29 01:50:05,958 - Ep 9 | Loss: 0.2039 | CSI-74: 0.5744 | SSIM: 0.6960 | Grad(avg/max): 0.8013/9.8677 | Skip(loss/grad): 0/28 | ValidSteps: 6577/6605 | LR: 9.747323e-05
+2026-04-29 01:51:01,063 - ⚠️ Abnormal GradNorm (16.065786), skipping step
+2026-04-29 02:02:35,978 - ⚠️ Abnormal GradNorm (14.857299), skipping step
+2026-04-29 02:14:14,745 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 02:16:36,818 - ⚠️ Abnormal GradNorm (32.366962), skipping step
+2026-04-29 02:25:48,751 - ⚠️ Abnormal GradNorm (13.285866), skipping step
+2026-04-29 02:54:48,248 - Ep 10 | Loss: 0.2041 | CSI-74: 0.5968 | SSIM: 0.6456 | Grad(avg/max): 0.7353/9.5634 | Skip(loss/grad): 0/11 | ValidSteps: 6594/6605 | LR: 9.999639e-05
+2026-04-29 02:54:48,255 - 🔥 New Best CSI: 0.5968
+2026-04-29 03:00:47,156 - ⚠️ Abnormal GradNorm (73.025734), skipping step
+2026-04-29 03:06:10,143 - ⚠️ Abnormal GradNorm (16.731541), skipping step
+2026-04-29 03:06:11,866 - ⚠️ Abnormal GradNorm (15.900725), skipping step
+2026-04-29 03:06:15,891 - ⚠️ Abnormal GradNorm (13.230884), skipping step
+2026-04-29 03:08:58,632 - ⚠️ Abnormal GradNorm (13.917980), skipping step
+2026-04-29 03:59:13,884 - Ep 11 | Loss: 0.2049 | CSI-74: 0.5519 | SSIM: 0.5392 | Grad(avg/max): 0.7007/9.8800 | Skip(loss/grad): 0/15 | ValidSteps: 6590/6605 | LR: 9.985840e-05
+2026-04-29 04:20:42,946 - ⚠️ Abnormal GradNorm (16.429688), skipping step
+2026-04-29 04:29:44,958 - ⚠️ Abnormal GradNorm (11.731415), skipping step
+2026-04-29 04:52:39,017 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 04:54:12,946 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 04:54:14,661 - ⚠️ Abnormal GradNorm (29.255363), skipping step
+2026-04-29 05:03:28,441 - Ep 12 | Loss: 0.2037 | CSI-74: 0.5468 | SSIM: 0.5943 | Grad(avg/max): 0.6632/9.9307 | Skip(loss/grad): 0/6 | ValidSteps: 6599/6605 | LR: 9.941033e-05
+2026-04-29 05:08:17,571 - ⚠️ Abnormal GradNorm (11.201327), skipping step
+2026-04-29 05:10:21,544 - ⚠️ Abnormal GradNorm (10.387273), skipping step
+2026-04-29 05:11:46,527 - ⚠️ Abnormal GradNorm (21.924006), skipping step
+2026-04-29 05:16:19,622 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 05:27:12,364 - ⚠️ Abnormal GradNorm (12.301064), skipping step
+2026-04-29 06:07:27,658 - Ep 13 | Loss: 0.2028 | CSI-74: 0.5712 | SSIM: 0.3598 | Grad(avg/max): 0.6435/9.9351 | Skip(loss/grad): 0/14 | ValidSteps: 6591/6605 | LR: 9.865940e-05
+2026-04-29 06:08:27,367 - ⚠️ Abnormal GradNorm (12.761416), skipping step
+2026-04-29 06:09:28,740 - ⚠️ Abnormal GradNorm (10.680266), skipping step
+2026-04-29 06:18:47,663 - ⚠️ Abnormal GradNorm (10.717013), skipping step
+2026-04-29 06:22:16,604 - ⚠️ Abnormal GradNorm (11.853745), skipping step
+2026-04-29 06:23:18,364 - ⚠️ Abnormal GradNorm (28.502316), skipping step
+2026-04-29 07:12:25,341 - Ep 14 | Loss: 0.2009 | CSI-74: 0.5952 | SSIM: 0.6373 | Grad(avg/max): 0.6272/9.5468 | Skip(loss/grad): 0/14 | ValidSteps: 6591/6605 | LR: 9.760987e-05
+2026-04-29 07:21:08,455 - ⚠️ Abnormal GradNorm (51.251511), skipping step
+2026-04-29 07:26:23,211 - ⚠️ Abnormal GradNorm (12.227723), skipping step
+2026-04-29 07:33:14,899 - ⚠️ Abnormal GradNorm (10.061951), skipping step
+2026-04-29 07:48:15,853 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 07:48:59,172 - ⚠️ Abnormal GradNorm (16.117298), skipping step
+2026-04-29 08:16:28,590 - Ep 15 | Loss: 0.2010 | CSI-74: 0.5784 | SSIM: 0.4756 | Grad(avg/max): 0.6115/9.8803 | Skip(loss/grad): 0/10 | ValidSteps: 6595/6605 | LR: 9.626727e-05
+2026-04-29 08:20:01,527 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 08:22:15,222 - ⚠️ Abnormal GradNorm (10.127670), skipping step
+2026-04-29 08:27:02,710 - ⚠️ Abnormal GradNorm (12.298450), skipping step
+2026-04-29 08:31:38,904 - ⚠️ Abnormal GradNorm (10.661168), skipping step
+2026-04-29 08:37:23,685 - ⚠️ Abnormal GradNorm (20.228695), skipping step
+2026-04-29 09:20:49,594 - Ep 16 | Loss: 0.1993 | CSI-74: 0.4202 | SSIM: 0.6673 | Grad(avg/max): 0.5995/9.6168 | Skip(loss/grad): 0/8 | ValidSteps: 6597/6605 | LR: 9.463986e-05
+2026-04-29 09:32:01,045 - ⚠️ Abnormal GradNorm (12.979128), skipping step
+2026-04-29 09:45:16,458 - ⚠️ Abnormal GradNorm (12.549474), skipping step
+2026-04-29 09:46:38,667 - ⚠️ Abnormal GradNorm (33.659641), skipping step
+2026-04-29 09:48:41,240 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 09:54:02,034 - ⚠️ Abnormal GradNorm (12.988602), skipping step
+2026-04-29 10:25:42,077 - Ep 17 | Loss: 0.1993 | CSI-74: 0.4713 | SSIM: 0.6363 | Grad(avg/max): 0.5884/9.5288 | Skip(loss/grad): 0/7 | ValidSteps: 6598/6605 | LR: 9.273772e-05
+2026-04-29 10:27:25,166 - ⚠️ Abnormal GradNorm (11.296813), skipping step
+2026-04-29 10:39:56,675 - ⚠️ Abnormal GradNorm (15.283273), skipping step
+2026-04-29 10:42:13,708 - ⚠️ Abnormal GradNorm (12.139432), skipping step
+2026-04-29 10:45:32,061 - ⚠️ Abnormal GradNorm (15.717650), skipping step
+2026-04-29 10:52:09,244 - ⚠️ Abnormal GradNorm (12.929474), skipping step
+2026-04-29 11:31:01,029 - Ep 18 | Loss: 0.1988 | CSI-74: 0.5675 | SSIM: 0.6698 | Grad(avg/max): 0.5873/9.4659 | Skip(loss/grad): 0/9 | ValidSteps: 6596/6605 | LR: 9.057346e-05
+2026-04-29 11:40:14,619 - ⚠️ Abnormal GradNorm (15.195107), skipping step
+2026-04-29 11:55:58,601 - ⚠️ Abnormal GradNorm (10.406293), skipping step
+2026-04-29 11:57:17,859 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 12:04:55,352 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 12:09:39,138 - ⚠️ Abnormal GradNorm (13.928572), skipping step
+2026-04-29 12:36:59,305 - Ep 19 | Loss: 0.1971 | CSI-74: 0.5974 | SSIM: 0.6938 | Grad(avg/max): 0.5700/9.1048 | Skip(loss/grad): 0/7 | ValidSteps: 6598/6605 | LR: 8.815908e-05
+2026-04-29 12:36:59,312 - 🔥 New Best CSI: 0.5974
+2026-04-29 12:38:45,798 - ⚠️ Abnormal GradNorm (15.796303), skipping step
+2026-04-29 12:41:38,807 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 12:51:02,831 - ⚠️ Abnormal GradNorm (16.802372), skipping step
+2026-04-29 12:53:24,566 - ⚠️ Abnormal GradNorm (15.125457), skipping step
+2026-04-29 12:53:28,095 - ⚠️ Abnormal GradNorm (15.399104), skipping step
+2026-04-29 13:43:15,069 - Ep 20 | Loss: 0.1971 | CSI-74: 0.5578 | SSIM: 0.6756 | Grad(avg/max): 0.5694/9.1594 | Skip(loss/grad): 0/9 | ValidSteps: 6596/6605 | LR: 8.551090e-05
+2026-04-29 13:43:53,118 - ⚠️ Abnormal GradNorm (11.077623), skipping step
+2026-04-29 13:52:27,423 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 14:09:54,635 - ⚠️ Abnormal GradNorm (14.305182), skipping step
+2026-04-29 14:22:10,039 - ⚠️ Abnormal GradNorm (16.234177), skipping step
+2026-04-29 14:27:35,315 - ⚠️ Abnormal GradNorm (10.268975), skipping step
+2026-04-29 14:49:55,152 - Ep 21 | Loss: 0.1975 | CSI-74: 0.5835 | SSIM: 0.5640 | Grad(avg/max): 0.5715/9.8553 | Skip(loss/grad): 0/6 | ValidSteps: 6599/6605 | LR: 8.264316e-05
+2026-04-29 14:50:39,514 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 14:51:59,938 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 14:53:03,890 - ⚠️ Abnormal GradNorm (14.844830), skipping step
+2026-04-29 14:53:49,790 - ⚠️ Abnormal GradNorm (15.691538), skipping step
+2026-04-29 15:17:01,807 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 15:56:56,000 - Ep 22 | Loss: 0.1964 | CSI-74: 0.6021 | SSIM: 0.6500 | Grad(avg/max): 0.5554/9.1443 | Skip(loss/grad): 0/13 | ValidSteps: 6592/6605 | LR: 7.957800e-05
+2026-04-29 15:56:56,007 - 🔥 New Best CSI: 0.6021
+2026-04-29 16:13:10,782 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 16:25:10,232 - ⚠️ Abnormal GradNorm (10.389128), skipping step
+2026-04-29 16:33:42,449 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 16:41:54,379 - ⚠️ Abnormal GradNorm (10.668742), skipping step
+2026-04-29 17:01:37,417 - ⚠️ Abnormal GradNorm (29.923862), skipping step
+2026-04-29 17:04:21,007 - Ep 23 | Loss: 0.1962 | CSI-74: 0.5573 | SSIM: 0.6837 | Grad(avg/max): 0.5609/9.0151 | Skip(loss/grad): 0/6 | ValidSteps: 6599/6605 | LR: 7.632778e-05
+2026-04-29 17:04:33,803 - ⚠️ Abnormal GradNorm (16.632765), skipping step
+2026-04-29 17:07:58,897 - ⚠️ Abnormal GradNorm (10.147643), skipping step
+2026-04-29 17:25:08,756 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 17:27:41,526 - ⚠️ Abnormal GradNorm (21.130508), skipping step
+2026-04-29 17:32:36,066 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 18:12:09,827 - Ep 24 | Loss: 0.1956 | CSI-74: 0.5946 | SSIM: 0.6811 | Grad(avg/max): 0.5608/9.9392 | Skip(loss/grad): 0/11 | ValidSteps: 6594/6605 | LR: 7.291830e-05
+2026-04-29 18:19:13,385 - ⚠️ Abnormal GradNorm (18.478718), skipping step
+2026-04-29 18:39:37,661 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 18:43:30,879 - ⚠️ Abnormal GradNorm (13.914199), skipping step
+2026-04-29 18:43:54,424 - ⚠️ Abnormal GradNorm (12.906155), skipping step
+2026-04-29 18:49:59,377 - ⚠️ Abnormal GradNorm (10.045424), skipping step
+2026-04-29 19:20:00,623 - Ep 25 | Loss: 0.1953 | CSI-74: 0.4960 | SSIM: 0.7130 | Grad(avg/max): 0.5578/9.2460 | Skip(loss/grad): 0/5 | ValidSteps: 6600/6605 | LR: 6.936483e-05
+2026-04-29 19:26:26,503 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 19:27:34,707 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 19:42:25,877 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 19:57:23,167 - ⚠️ Abnormal GradNorm (12.929811), skipping step
+2026-04-29 19:58:01,168 - ⚠️ Abnormal GradNorm (25.194719), skipping step
+2026-04-29 20:27:49,003 - Ep 26 | Loss: 0.1954 | CSI-74: 0.5951 | SSIM: 0.6477 | Grad(avg/max): 0.5550/8.6224 | Skip(loss/grad): 0/7 | ValidSteps: 6598/6605 | LR: 6.569340e-05
+2026-04-29 20:28:30,184 - ⚠️ Abnormal GradNorm (12.941951), skipping step
+2026-04-29 20:32:19,534 - ⚠️ Abnormal GradNorm (16.429790), skipping step
+2026-04-29 20:34:40,077 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 20:37:48,309 - ⚠️ Abnormal GradNorm (22.398298), skipping step
+2026-04-29 20:38:57,108 - ⚠️ Abnormal GradNorm (16.430277), skipping step
+2026-04-29 21:35:37,428 - Ep 27 | Loss: 0.1931 | CSI-74: 0.5886 | SSIM: 0.5267 | Grad(avg/max): 0.5634/9.4248 | Skip(loss/grad): 0/10 | ValidSteps: 6595/6605 | LR: 6.192728e-05
+2026-04-29 21:37:36,729 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 21:39:45,844 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-29 21:40:35,289 - ⚠️ Abnormal GradNorm (23.487930), skipping step
+2026-04-29 21:43:55,401 - ⚠️ Abnormal GradNorm (17.819120), skipping step
+2026-04-29 21:55:22,752 - ⚠️ Abnormal GradNorm (14.163849), skipping step
+2026-04-29 22:43:11,570 - Ep 28 | Loss: 0.1946 | CSI-74: 0.5875 | SSIM: 0.6851 | Grad(avg/max): 0.5639/8.1318 | Skip(loss/grad): 0/12 | ValidSteps: 6593/6605 | LR: 5.808914e-05
+2026-04-29 22:45:46,661 - ⚠️ Abnormal GradNorm (22.148592), skipping step
+2026-04-29 22:46:58,248 - ⚠️ Abnormal GradNorm (40.702534), skipping step
+2026-04-29 23:39:05,208 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-29 23:47:13,174 - ⚠️ Abnormal GradNorm (15.850023), skipping step
+2026-04-29 23:50:22,333 - Ep 29 | Loss: 0.1940 | CSI-74: 0.5845 | SSIM: 0.6442 | Grad(avg/max): 0.5694/9.4283 | Skip(loss/grad): 0/4 | ValidSteps: 6601/6605 | LR: 5.419669e-05
+2026-04-29 23:52:30,512 - ⚠️ Abnormal GradNorm (25.772486), skipping step
+2026-04-29 23:54:46,905 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 00:07:06,601 - ⚠️ Abnormal GradNorm (13.572704), skipping step
+2026-04-30 00:13:54,774 - ⚠️ Abnormal GradNorm (10.339022), skipping step
+2026-04-30 00:32:10,608 - ⚠️ Abnormal GradNorm (11.931587), skipping step
+2026-04-30 00:56:53,116 - Ep 30 | Loss: 0.1934 | CSI-74: 0.5988 | SSIM: 0.6742 | Grad(avg/max): 0.5753/9.6399 | Skip(loss/grad): 0/11 | ValidSteps: 6594/6605 | LR: 5.028268e-05
+2026-04-30 01:02:38,395 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 01:12:55,528 - ⚠️ Abnormal GradNorm (24.315950), skipping step
+2026-04-30 01:26:02,599 - ⚠️ Abnormal GradNorm (12.312222), skipping step
+2026-04-30 01:29:19,449 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 01:32:15,856 - ⚠️ Abnormal GradNorm (15.272847), skipping step
+2026-04-30 02:03:03,795 - Ep 31 | Loss: 0.1928 | CSI-74: 0.6010 | SSIM: 0.7144 | Grad(avg/max): 0.5726/9.6499 | Skip(loss/grad): 0/16 | ValidSteps: 6589/6605 | LR: 4.637003e-05
+2026-04-30 02:03:26,017 - ⚠️ Abnormal GradNorm (18.824791), skipping step
+2026-04-30 02:11:09,151 - ⚠️ Abnormal GradNorm (35.381588), skipping step
+2026-04-30 02:11:57,969 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 02:12:50,862 - ⚠️ Abnormal GradNorm (41.935596), skipping step
+2026-04-30 02:15:13,103 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 03:09:00,006 - Ep 32 | Loss: 0.1910 | CSI-74: 0.6099 | SSIM: 0.7287 | Grad(avg/max): 0.5656/8.9723 | Skip(loss/grad): 0/13 | ValidSteps: 6592/6605 | LR: 4.247800e-05
+2026-04-30 03:09:00,013 - 🔥 New Best CSI: 0.6099
+2026-04-30 03:16:08,380 - ⚠️ Abnormal GradNorm (19.576027), skipping step
+2026-04-30 03:20:41,599 - ⚠️ Abnormal GradNorm (21.451553), skipping step
+2026-04-30 03:23:03,053 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 03:23:19,344 - ⚠️ Abnormal GradNorm (19.319788), skipping step
+2026-04-30 03:27:46,804 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 04:14:29,640 - Ep 33 | Loss: 0.1923 | CSI-74: 0.5994 | SSIM: 0.6949 | Grad(avg/max): 0.5783/9.6429 | Skip(loss/grad): 0/12 | ValidSteps: 6593/6605 | LR: 3.863171e-05
+2026-04-30 04:18:34,984 - ⚠️ Abnormal GradNorm (21.323950), skipping step
+2026-04-30 04:23:03,923 - ⚠️ Abnormal GradNorm (10.478236), skipping step
+2026-04-30 04:30:10,833 - ⚠️ Abnormal GradNorm (10.641032), skipping step
+2026-04-30 04:30:27,008 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 04:30:58,774 - ⚠️ Abnormal GradNorm (38.750706), skipping step
+2026-04-30 05:19:36,459 - Ep 34 | Loss: 0.1919 | CSI-74: 0.5891 | SSIM: 0.6945 | Grad(avg/max): 0.5962/9.8369 | Skip(loss/grad): 0/15 | ValidSteps: 6590/6605 | LR: 3.485708e-05
+2026-04-30 05:25:53,700 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 05:30:18,851 - ⚠️ Abnormal GradNorm (21.742788), skipping step
+2026-04-30 05:33:11,415 - ⚠️ Abnormal GradNorm (10.189748), skipping step
+2026-04-30 05:37:33,345 - ⚠️ Abnormal GradNorm (19.392941), skipping step
+2026-04-30 05:42:17,066 - ⚠️ Abnormal GradNorm (10.025807), skipping step
+2026-04-30 06:24:30,181 - Ep 35 | Loss: 0.1920 | CSI-74: 0.5889 | SSIM: 0.7034 | Grad(avg/max): 0.6051/8.6227 | Skip(loss/grad): 0/16 | ValidSteps: 6589/6605 | LR: 3.117606e-05
+2026-04-30 06:25:36,604 - ⚠️ Abnormal GradNorm (41.677418), skipping step
+2026-04-30 06:28:48,793 - ⚠️ Abnormal GradNorm (11.969344), skipping step
+2026-04-30 06:36:04,221 - ⚠️ Abnormal GradNorm (26.425009), skipping step
+2026-04-30 06:42:41,062 - ⚠️ Abnormal GradNorm (13.440841), skipping step
+2026-04-30 06:43:29,030 - ⚠️ Abnormal GradNorm (38.268661), skipping step
+2026-04-30 07:29:32,374 - Ep 36 | Loss: 0.1905 | CSI-74: 0.6040 | SSIM: 0.7166 | Grad(avg/max): 0.6007/8.4655 | Skip(loss/grad): 0/14 | ValidSteps: 6591/6605 | LR: 2.760959e-05
+2026-04-30 07:30:53,283 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 07:48:18,861 - ⚠️ Abnormal GradNorm (11.029171), skipping step
+2026-04-30 07:49:48,569 - ⚠️ Abnormal GradNorm (16.754583), skipping step
+2026-04-30 07:55:20,491 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 08:01:45,863 - ⚠️ Abnormal GradNorm (12.515779), skipping step
+2026-04-30 08:35:01,318 - Ep 37 | Loss: 0.1913 | CSI-74: 0.5756 | SSIM: 0.6585 | Grad(avg/max): 0.6218/9.7131 | Skip(loss/grad): 0/12 | ValidSteps: 6593/6605 | LR: 2.417969e-05
+2026-04-30 08:36:52,055 - ⚠️ Abnormal GradNorm (12.571815), skipping step
+2026-04-30 08:37:00,282 - ⚠️ Abnormal GradNorm (12.931439), skipping step
+2026-04-30 08:44:57,610 - ⚠️ Abnormal GradNorm (20.587879), skipping step
+2026-04-30 08:51:28,825 - ⚠️ Abnormal GradNorm (11.387894), skipping step
+2026-04-30 09:02:05,024 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 09:40:43,924 - Ep 38 | Loss: 0.1904 | CSI-74: 0.5853 | SSIM: 0.6815 | Grad(avg/max): 0.6171/9.9238 | Skip(loss/grad): 0/14 | ValidSteps: 6591/6605 | LR: 2.090950e-05
+2026-04-30 09:50:00,740 - ⚠️ Abnormal GradNorm (15.240226), skipping step
+2026-04-30 10:01:18,806 - ⚠️ Abnormal GradNorm (11.911407), skipping step
+2026-04-30 10:05:16,688 - ⚠️ Abnormal GradNorm (17.003731), skipping step
+2026-04-30 10:15:46,426 - ⚠️ Abnormal GradNorm (23.356346), skipping step
+2026-04-30 10:18:10,428 - ⚠️ Abnormal GradNorm (11.596844), skipping step
+2026-04-30 10:47:11,764 - Ep 39 | Loss: 0.1914 | CSI-74: 0.5951 | SSIM: 0.6821 | Grad(avg/max): 0.6230/9.5279 | Skip(loss/grad): 0/13 | ValidSteps: 6592/6605 | LR: 1.781756e-05
+2026-04-30 10:48:08,601 - ⚠️ Abnormal GradNorm (10.072137), skipping step
+2026-04-30 10:51:32,497 - ⚠️ Abnormal GradNorm (13.655181), skipping step
+2026-04-30 10:53:43,691 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 10:56:59,136 - ⚠️ Abnormal GradNorm (26.759159), skipping step
+2026-04-30 11:00:06,982 - ⚠️ Abnormal GradNorm (32.784138), skipping step
+2026-04-30 11:54:42,856 - Ep 40 | Loss: 0.1908 | CSI-74: 0.5806 | SSIM: 0.6228 | Grad(avg/max): 0.6283/9.4613 | Skip(loss/grad): 0/16 | ValidSteps: 6589/6605 | LR: 1.492465e-05
+2026-04-30 12:01:16,569 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 12:04:32,560 - ⚠️ Abnormal GradNorm (17.990486), skipping step
+2026-04-30 12:07:22,861 - ⚠️ Abnormal GradNorm (10.188420), skipping step
+2026-04-30 12:10:18,037 - ⚠️ Abnormal GradNorm (13.539727), skipping step
+2026-04-30 12:13:57,793 - ⚠️ Abnormal GradNorm (29.550043), skipping step
+2026-04-30 13:02:25,425 - Ep 41 | Loss: 0.1904 | CSI-74: 0.5903 | SSIM: 0.6744 | Grad(avg/max): 0.6325/9.1104 | Skip(loss/grad): 0/19 | ValidSteps: 6586/6605 | LR: 1.224824e-05
+2026-04-30 13:04:14,119 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 13:09:35,999 - ⚠️ Abnormal GradNorm (10.164018), skipping step
+2026-04-30 13:15:36,381 - ⚠️ Abnormal GradNorm (11.382221), skipping step
+2026-04-30 13:16:22,783 - ⚠️ Abnormal GradNorm (14.456664), skipping step
+2026-04-30 13:19:23,164 - ⚠️ Abnormal GradNorm (23.397585), skipping step
+2026-04-30 14:10:16,915 - Ep 42 | Loss: 0.1895 | CSI-74: 0.5817 | SSIM: 0.6951 | Grad(avg/max): 0.6330/9.4756 | Skip(loss/grad): 0/11 | ValidSteps: 6594/6605 | LR: 9.800540e-06
+2026-04-30 14:14:48,097 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 14:15:31,560 - ⚠️ Abnormal GradNorm (10.926848), skipping step
+2026-04-30 14:15:46,039 - ⚠️ Abnormal GradNorm (19.377161), skipping step
+2026-04-30 14:20:41,006 - ⚠️ Abnormal GradNorm (14.363327), skipping step
+2026-04-30 14:28:50,410 - ⚠️ Abnormal GradNorm (25.327747), skipping step
+2026-04-30 15:18:10,513 - Ep 43 | Loss: 0.1900 | CSI-74: 0.6009 | SSIM: 0.7102 | Grad(avg/max): 0.6373/9.4897 | Skip(loss/grad): 0/15 | ValidSteps: 6590/6605 | LR: 7.601241e-06
+2026-04-30 15:18:20,404 - ⚠️ Abnormal GradNorm (11.663460), skipping step
+2026-04-30 15:21:01,624 - ⚠️ Abnormal GradNorm (10.184195), skipping step
+2026-04-30 15:28:15,341 - ⚠️ Abnormal GradNorm (21.123266), skipping step
+2026-04-30 15:34:43,964 - ⚠️ Abnormal GradNorm (13.884552), skipping step
+2026-04-30 15:36:31,413 - ⚠️ Abnormal GradNorm (34.623470), skipping step
+2026-04-30 16:26:07,351 - Ep 44 | Loss: 0.1906 | CSI-74: 0.5990 | SSIM: 0.7024 | Grad(avg/max): 0.6633/9.6685 | Skip(loss/grad): 0/12 | ValidSteps: 6593/6605 | LR: 5.661461e-06
+2026-04-30 16:29:47,687 - ⚠️ Abnormal GradNorm (22.239985), skipping step
+2026-04-30 16:40:03,324 - ⚠️ Abnormal GradNorm (13.761249), skipping step
+2026-04-30 16:41:37,443 - ⚠️ Abnormal GradNorm (20.474594), skipping step
+2026-04-30 16:45:18,834 - ⚠️ Abnormal GradNorm (15.425873), skipping step
+2026-04-30 16:53:03,627 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 17:34:08,945 - Ep 45 | Loss: 0.1897 | CSI-74: 0.5567 | SSIM: 0.5360 | Grad(avg/max): 0.6571/9.6599 | Skip(loss/grad): 0/15 | ValidSteps: 6590/6605 | LR: 3.994868e-06
+2026-04-30 17:39:15,611 - ⚠️ Abnormal GradNorm (10.731668), skipping step
+2026-04-30 17:40:52,973 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 17:49:57,396 - ⚠️ Abnormal GradNorm (10.898525), skipping step
+2026-04-30 17:51:53,871 - ⚠️ Abnormal GradNorm (52.820232), skipping step
+2026-04-30 17:53:35,868 - ⚠️ Abnormal GradNorm (15.025230), skipping step
+2026-04-30 18:42:15,368 - Ep 46 | Loss: 0.1901 | CSI-74: 0.5971 | SSIM: 0.6730 | Grad(avg/max): 0.6586/9.1068 | Skip(loss/grad): 0/18 | ValidSteps: 6587/6605 | LR: 2.611314e-06
+2026-04-30 18:47:27,007 - ⚠️ Abnormal GradNorm (18.504200), skipping step
+2026-04-30 18:58:37,624 - ⚠️ Abnormal GradNorm (14.114798), skipping step
+2026-04-30 19:00:23,310 - ⚠️ Abnormal GradNorm (11.288747), skipping step
+2026-04-30 19:03:23,876 - ⚠️ Abnormal GradNorm (43.088081), skipping step
+2026-04-30 19:12:06,391 - ⚠️ Abnormal GradNorm (14.511943), skipping step
+2026-04-30 19:50:29,133 - Ep 47 | Loss: 0.1898 | CSI-74: 0.5784 | SSIM: 0.6859 | Grad(avg/max): 0.6526/8.9325 | Skip(loss/grad): 0/20 | ValidSteps: 6585/6605 | LR: 1.518746e-06
+2026-04-30 19:59:40,593 - ⚠️ Abnormal GradNorm (19.067242), skipping step
+2026-04-30 20:05:02,465 - ⚠️ Abnormal GradNorm (inf), skipping step
+2026-04-30 20:06:59,104 - ⚠️ Abnormal GradNorm (27.841770), skipping step
+2026-04-30 20:08:35,326 - ⚠️ Abnormal GradNorm (33.744831), skipping step
+2026-04-30 20:12:21,575 - ⚠️ Abnormal GradNorm (13.745445), skipping step
+2026-04-30 20:58:35,546 - Ep 48 | Loss: 0.1898 | CSI-74: 0.5948 | SSIM: 0.6940 | Grad(avg/max): 0.6624/9.5779 | Skip(loss/grad): 0/12 | ValidSteps: 6593/6605 | LR: 7.226148e-07
+2026-04-30 21:04:31,588 - ⚠️ Abnormal GradNorm (nan), skipping step
+2026-04-30 21:06:10,609 - ⚠️ Abnormal GradNorm (16.090900), skipping step
+2026-04-30 21:09:29,788 - ⚠️ Abnormal GradNorm (10.420043), skipping step
+2026-04-30 21:10:15,047 - ⚠️ Abnormal GradNorm (10.569129), skipping step
+2026-04-30 21:18:10,894 - ⚠️ Abnormal GradNorm (12.121759), skipping step
+2026-04-30 22:06:40,817 - Ep 49 | Loss: 0.1898 | CSI-74: 0.6027 | SSIM: 0.6979 | Grad(avg/max): 0.6605/9.8542 | Skip(loss/grad): 0/21 | ValidSteps: 6584/6605 | LR: 2.297806e-07
+2026-04-30 22:07:04,675 - ⚠️ Abnormal GradNorm (15.382100), skipping step
+2026-04-30 22:13:05,019 - ⚠️ Abnormal GradNorm (22.587420), skipping step
+2026-04-30 22:14:57,130 - ⚠️ Abnormal GradNorm (11.298047), skipping step
+2026-04-30 22:15:56,329 - ⚠️ Abnormal GradNorm (10.549061), skipping step
+2026-04-30 22:17:30,436 - ⚠️ Abnormal GradNorm (11.169037), skipping step
+2026-04-30 23:14:42,870 - Ep 50 | Loss: 0.1889 | CSI-74: 0.6050 | SSIM: 0.6991 | Grad(avg/max): 0.6592/9.9600 | Skip(loss/grad): 0/21 | ValidSteps: 6584/6605 | LR: 4.197169e-08
