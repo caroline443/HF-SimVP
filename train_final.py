@@ -271,7 +271,7 @@ def train_pipeline(mode):
                 batch_metrics = metrics_calc.compute_batch(outputs.float(), targets.float())
                 tracker.update(batch_metrics)
 
-        avg_metrics, _ = tracker.result()
+        avg_metrics, _, _ = tracker.result()
         avg_csi = avg_metrics.get('CSI-74-POOL1', 0.0)
         avg_ssim = avg_metrics.get('SSIM', 0.0)
         avg_loss = train_loss / max(1, valid_steps)

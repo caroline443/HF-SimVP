@@ -216,7 +216,7 @@ def evaluate_model(model, loader, calculator, device, max_batches=0):
                         key = f"{metric_name}_{suffix}"
                         batch_avg_curves.setdefault(key, []).append(curve)
 
-    avg_metrics, curve_metrics = tracker.result()
+    avg_metrics, curve_metrics, global_metrics = tracker.result()
 
     batch_avg_curve_metrics = {}
     for key, curves in batch_avg_curves.items():
@@ -256,7 +256,7 @@ def evaluate_model(model, loader, calculator, device, max_batches=0):
         "target_gt1_ratio": float(target_gt1) / max(target_count, 1),
     }
 
-    return avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats
+    return avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats, global_metrics
 
 
 def save_table(rows, out_csv):
@@ -305,17 +305,29 @@ def save_value_range_table(rows, out_csv):
         writer.writerows(rows)
 
 
-def build_summary_row(name, avg_metrics, curve_metrics, batch_avg_curve_metrics, threshold_labels):
+def build_summary_row(name, avg_metrics, global_metrics, batch_avg_curve_metrics, threshold_labels):
     """
     主表列说明：
-      {METRIC}-{THRESH}-POOL{S}        : batch_avg 口径（主列，与文献对齐）
-      {METRIC}-{THRESH}-POOL{S}-GC     : global_count 口径（附列，仅供参考）
+      {METRIC}-{THRESH}-POOL{S}        : batch_avg 口径（主列，保留供参考）
+      {METRIC}-{THRESH}-POOL{S}-GC     : global_count 口径（附列，与文献对齐，对标时应看此列）
 
-    为什么主列用 batch_avg：
-      global_count 在极端阈值（如 219）下，因稀有像素极少导致分母极小，
-      会产生虚假高值（如 CSI-219 global_count=0.56 vs batch_avg=0.03）。
-      batch_avg 先在每个 batch 内算比率再平均，与 EarthFormer/SimCast 等
-      文献的评测口径一致，适合直接对标。
+    两种口径的区别与文献对齐说明：
+      - global_count（-GC 列）：先跨所有 batch 累积全局 TP/FN/FP，最后统一计算比率。
+        这是 EarthFormer（NeurIPS 2022）和 SimCast（ICME 2025）的官方实现口径
+        （EarthFormer metrics_mode="0"，全局累积后算 mCSI）。
+        与论文数字直接对标时，应使用此列。
+      - batch_avg（主列，无后缀）：先在每个 batch 内分别计算比率，再跨 batch 取平均。
+        在稀有强降水阈值（如 219）下，因每个 batch 内命中极少导致比率极不稳定，
+        与文献数字不可直接对比，仅作为辅助参考。
+
+    已确认的文献基准数字（来自 SimCast Table II，EarthFormer 官方 checkpoint 复现）：
+      EarthFormer: CRPS=0.0251, SSIM=0.7756, HSS=0.5411
+                   CSI-M POOL1=0.4310, POOL4=0.4319, POOL16=0.4351
+                   CSI-181 POOL1=0.2622, CSI-219 POOL1=0.1448
+      SimCast:     CRPS=0.0270, SSIM=0.7252, HSS=0.5834
+                   CSI-M POOL1=0.4521, POOL4=0.4750, POOL16=0.4968
+                   CSI-181 POOL1=0.3099, CSI-219 POOL1=0.2007
+      （CSI-M = 6个阈值 [16,74,133,160,181,219] 的均值）
     """
     row = {
         "Method": name,
@@ -329,14 +341,13 @@ def build_summary_row(name, avg_metrics, curve_metrics, batch_avg_curve_metrics,
             for scale in POOL_SCALES:
                 curve_key = f"{metric}_{threshold}_POOL{scale}"
 
-                # --- 主列：batch_avg（文献对齐口径）---
+                # --- 主列：batch_avg（仅供参考，不与文献直接对标）---
                 curve_batch = batch_avg_curve_metrics.get(curve_key)
                 value_batch = float(np.mean(curve_batch)) if curve_batch is not None else 0.0
                 row[f"{metric}-{threshold}-POOL{scale}"] = f"{value_batch:.4f}"
 
-                # --- 附列：global_count（仅供参考，不直接对标文献）---
-                curve_gc = curve_metrics.get(curve_key)
-                value_gc = float(np.mean(curve_gc)) if curve_gc is not None else 0.0
+                # --- 附列：global_count（文献对齐口径，对标 EarthFormer/SimCast 时用此列）---
+                value_gc = float(global_metrics.get(f"{metric}-{threshold}-POOL{scale}", 0.0))
                 row[f"{metric}-{threshold}-POOL{scale}-GC"] = f"{value_gc:.4f}"
 
     return row
@@ -344,8 +355,9 @@ def build_summary_row(name, avg_metrics, curve_metrics, batch_avg_curve_metrics,
 
 def build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_labels):
     """
-    时序曲线表：同时保留 batch_avg（主）和 global_count（附）两种口径，
-    通过 Aggregation 字段区分，paper_plots.py 默认读取 batch_avg 行。
+    时序曲线表：同时保留 batch_avg 和 global_count 两种口径，
+    通过 Aggregation 字段区分。
+    与文献（EarthFormer/SimCast）对标时应使用 Aggregation="global_count" 的行。
     """
     rows = []
 
@@ -356,7 +368,7 @@ def build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_
                 curve_batch = batch_avg_curve_metrics.get(curve_key)
                 curve_gc = curve_metrics.get(curve_key)
 
-                # 主：batch_avg（排在前面，paper_plots 默认取第一条匹配）
+                # batch_avg（辅助口径，不直接对标文献）
                 if curve_batch is not None:
                     for frame_idx, value in enumerate(curve_batch, start=1):
                         rows.append(
@@ -371,7 +383,7 @@ def build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_
                             }
                         )
 
-                # 附：global_count（保留供参考）
+                # global_count（文献对齐口径，EarthFormer/SimCast 均用此方式）
                 if curve_gc is not None:
                     for frame_idx, value in enumerate(curve_gc, start=1):
                         rows.append(
@@ -518,7 +530,7 @@ def run_benchmark(args):
     range_rows = []
     for name, model in models.items():
         print(f"Running {name}...")
-        avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats = evaluate_model(
+        avg_metrics, curve_metrics, batch_avg_curve_metrics, raw_count_curves, value_range_stats, global_metrics = evaluate_model(
             model,
             loader,
             calculator,
@@ -561,7 +573,7 @@ def run_benchmark(args):
                     f"target_max={value_range_stats['target_max']:.6f}"
                 )
 
-        rows.append(build_summary_row(name, avg_metrics, curve_metrics, batch_avg_curve_metrics, threshold_labels))
+        rows.append(build_summary_row(name, avg_metrics, global_metrics, batch_avg_curve_metrics, threshold_labels))
         temporal_rows.extend(build_temporal_rows(name, curve_metrics, batch_avg_curve_metrics, threshold_labels))
         count_rows.extend(build_count_rows(name, raw_count_curves, threshold_labels))
 

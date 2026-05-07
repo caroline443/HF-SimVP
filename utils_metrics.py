@@ -125,6 +125,7 @@ class MetricTracker:
     def result(self):
         metrics_avg = {}
         metrics_curve = {} # 专门存 [T] 维度的曲线数据
+        metrics_global = {}
 
         # 1. 标量平均
         for k in self.scalars:
@@ -160,4 +161,12 @@ class MetricTracker:
                 metrics_avg[f'POD-{name}-POOL{scale}'] = pod_curve.mean()
                 metrics_avg[f'FAR-{name}-POOL{scale}'] = far_curve.mean()
 
-        return metrics_avg, metrics_curve
+                # 计算全局计数口径 (跨所有时间步累计后再算比率)
+                tp_sum = TP.sum()
+                fn_sum = FN.sum()
+                fp_sum = FP.sum()
+                metrics_global[f'CSI-{name}-POOL{scale}'] = tp_sum / (tp_sum + fn_sum + fp_sum + eps)
+                metrics_global[f'POD-{name}-POOL{scale}'] = tp_sum / (tp_sum + fn_sum + eps)
+                metrics_global[f'FAR-{name}-POOL{scale}'] = fp_sum / (tp_sum + fp_sum + eps)
+
+            return metrics_avg, metrics_curve, metrics_global
