@@ -1,0 +1,2 @@
+Method,pred_min,pred_max,target_min,target_max,pred_lt0,pred_gt1,target_lt0,target_gt1,pred_lt0_ratio,pred_gt1_ratio,target_lt0_ratio,target_gt1_ratio
+Enhanced,0.000041,0.921554,0.000000,0.996078,0,0,0,0,0.00000000,0.00000000,0.00000000,0.00000000
