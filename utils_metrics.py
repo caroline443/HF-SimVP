@@ -169,4 +169,4 @@ class MetricTracker:
                 metrics_global[f'POD-{name}-POOL{scale}'] = tp_sum / (tp_sum + fn_sum + eps)
                 metrics_global[f'FAR-{name}-POOL{scale}'] = fp_sum / (tp_sum + fp_sum + eps)
 
-            return metrics_avg, metrics_curve, metrics_global
+        return metrics_avg, metrics_curve, metrics_global
