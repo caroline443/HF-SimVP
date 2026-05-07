@@ -7,7 +7,14 @@ import glob
 
 class SEVIRDataset(Dataset):
     """
-    [V3.0] 全量 SEVIR 加载器 (含滑窗扩充策略)
+    [V3.1] 全量 SEVIR 加载器 (含滑窗扩充策略)
+
+    测试集文件选取规则（与 EarthFormer/SimCast/PreDiff 对齐）：
+      - 仅使用 RANDOMEVENTS 文件，排除 STORMEVENTS
+      - STORMEVENTS 是专门挑选的强对流事件，极端降水像素比例远高于 RANDOM，
+        混入测试集会导致高阈值 CSI（133/160/181/219）系统性虚高，
+        无法与文献数字直接对比
+      - 训练集保留全部 RANDOM + STORM 文件（有助于学习极端降水特征）
     """
     def __init__(self, data_root, mode='train', input_len=13, pred_len=12):
         super().__init__()
@@ -59,12 +66,17 @@ class SEVIRDataset(Dataset):
                 if year > 2019:
                     is_train_file = False
                 elif year == 2019:
-                    if month >= 6: # 6月及以后是测试集
+                    if month >= 5: # 5月及以后是测试集（与 EarthFormer/SimCast 标准一致）
                         is_train_file = False
                 
                 if mode == 'train' and is_train_file:
                     self.files.append(f_path)
                 elif mode == 'test' and not is_train_file:
+                    # 测试集只保留 RANDOMEVENTS，排除 STORMEVENTS
+                    # 与 EarthFormer/SimCast/PreDiff 文献评测口径一致
+                    if 'STORMEVENTS' in filename:
+                        print(f"  [TEST] 跳过 STORM 文件（与文献口径对齐）: {filename}")
+                        continue
                     self.files.append(f_path)
                     
             except Exception as e:
