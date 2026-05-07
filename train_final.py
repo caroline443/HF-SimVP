@@ -15,7 +15,7 @@ from model import SimVP_Baseline, SimVP_Enhanced
 from dataset_universal import SEVIRDataset
 from utils_metrics import MetricCalculator, MetricTracker
 
-# --- 全局配置 (V3.1 修复版) ---
+# --- 全局配置 (V3.2 FAR修复版) ---
 CONFIG = {
     "DATASET_TYPE": "sevir", 
     "PATH_SEVIR": r"F:\zyx\dataset\sevir_data", # 确认路径
@@ -25,13 +25,15 @@ CONFIG = {
     "LR_ENHANCED": 0.0001,  # Enhanced 更保守，降低失稳风险
     "EPOCHS": 50,       # 跑满 50 轮
     "PATIENCE": 50,     # 禁用 Early Stopping
-    "GRAD_CLIP": 1.0,   # 梯度裁剪阈值（0.1 过于激进，改为 1.0）
+    "GRAD_CLIP": 1.0,   # 梯度裁剪阈值
     "GRAD_NORM_GUARD": 10.0,  # 梯度范数过大时跳过更新
     "LOSS_GUARD": 5.0,  # loss 异常上限
     "LOSS_ALPHA_ENHANCED": 0.6,  # Enhanced 损失组合权重
-    "LOSS_WARMUP_EPOCHS": 10,     # warm-up 缩短到 10 epoch，让极端权重更早生效
-    "LOSS_EXT_MAX_WEIGHT": 8.0,   # 极端像素权重 3.0 -> 8.0，强化对 219 阈值的惩罚
-    "LOSS_FOCAL_WEIGHT": 0.15,    # Focal 分支权重，专门针对极端像素漏报
+    "LOSS_WARMUP_EPOCHS": 10,     # warm-up epochs
+    "LOSS_EXT_MAX_WEIGHT": 4.0,   # 极端像素权重 8.0->4.0，避免过度偏向极端像素导致 FAR 失控
+    "LOSS_FOCAL_WEIGHT": 0.10,    # Focal 分支权重（双向 focal，同时约束漏报和误报）
+    "LOSS_FOCAL_ALPHA": 0.75,     # 双向 focal 中正样本权重（0.75 表示漏报惩罚略重于误报）
+    "BEST_MODEL_FAR_PENALTY": 0.3, # best model 判据：score = CSI_219 - FAR_PENALTY * FAR_219
     "LOG_EVERY": 100,
     "NUM_WORKERS": 4,     
     "CKPT_DIR": os.path.join(r"F:\zyx\result", datetime.now().strftime("%Y%m%d")),
@@ -56,34 +58,38 @@ def get_logger(name, save_dir):
     logger.addHandler(logging.StreamHandler())
     return logger
 
-# --- 动态预热混合损失 V2 (只用于 Enhanced) ---
+# --- 动态预热混合损失 V3 (只用于 Enhanced) ---
 class HybridLoss(nn.Module):
     """
     三分支混合损失：
       1. loss_structure : MS-SSIM，保结构
       2. loss_intensity : 分级加权 L1，强化中/高/极端降水
-      3. loss_focal     : 极端像素 Focal BCE，专门压制极端降水漏报
+      3. loss_focal     : 双向 Focal BCE，同时约束漏报（FN）和误报（FP）
 
-    改动说明（V2）：
-      - ext_weight: 3.0 -> 8.0，对 thresh_ext(219) 以上像素施加更强惩罚
-      - warmup_epochs: 15 -> 10，让极端权重更早收敛到最大值
-      - 新增 focal_weight 分支：只对 target > thresh_ext 的像素计算
-        binary focal loss（gamma=2），逼迫模型不漏报极端降水
+    V3 改动（修复 FAR 失控）：
+      - ext_weight: 8.0 -> 4.0，避免过度偏向极端像素导致模型倾向于过度预测
+      - Focal Loss 改为双向：
+          正样本（target > thresh_ext）：惩罚漏报，权重 focal_alpha
+          负样本（target <= thresh_ext 且 pred > thresh_ext）：惩罚误报，权重 1-focal_alpha
+        focal_alpha=0.75 表示漏报惩罚略重于误报，在 CSI 和 FAR 之间取得平衡
+      - focal_weight: 0.15 -> 0.10，降低 focal 分支整体强度，避免主导训练
     """
-    def __init__(self, device, alpha=0.6, warmup_epochs=10, max_weight=8.0, focal_weight=0.15):
+    def __init__(self, device, alpha=0.6, warmup_epochs=10, max_weight=4.0,
+                 focal_weight=0.10, focal_alpha=0.75):
         super().__init__()
         self.device = device
         self.alpha = alpha
         self.warmup_epochs = warmup_epochs
         self.max_weight = max_weight
         self.focal_weight = focal_weight
-        self.focal_gamma = 2.0          # focal loss 聚焦参数，固定为 2
+        self.focal_alpha = focal_alpha  # 正样本（漏报）权重，1-focal_alpha 为负样本（误报）权重
+        self.focal_gamma = 2.0
         self.l1_loss = nn.L1Loss(reduction='none')
         self.ssim_module = MS_SSIM(data_range=1.0, size_average=True, channel=1, win_size=3).to(device)
 
         self.thresh_mid  = 74.0  / 255.0
         self.thresh_high = 133.0 / 255.0
-        self.thresh_ext  = 219.0 / 255.0  # 与 benchmark 阈值对齐（原为 210）
+        self.thresh_ext  = 219.0 / 255.0
 
         self.current_epoch = 0
 
@@ -122,25 +128,34 @@ class HybridLoss(nn.Module):
             target_n.reshape(-1, c, h, w)
         )
 
-        # --- 4. 极端像素 Focal Loss ---
-        # 只在 target > thresh_ext 的位置计算，逼迫模型不漏报极端降水
-        # 使用 focal BCE：FL = -alpha_t * (1-p_t)^gamma * log(p_t)
-        ext_mask = (target > self.thresh_ext)  # [B,T,C,H,W] bool
-        if ext_mask.any():
-            pred_ext   = pred[ext_mask].clamp(1e-6, 1 - 1e-6)
-            target_ext = target[ext_mask]
-            # 二值化：target > thresh_ext 视为正样本（=1）
-            target_bin = torch.ones_like(target_ext)
-            bce = -(target_bin * torch.log(pred_ext) +
-                    (1 - target_bin) * torch.log(1 - pred_ext))
-            # focal 调制：(1 - pred)^gamma 让难样本（预测值低）获得更大梯度
-            focal_factor = (1 - pred_ext) ** self.focal_gamma
-            loss_focal = (focal_factor * bce).mean()
-        else:
-            loss_focal = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
+        # --- 4. 双向 Focal BCE ---
+        # 正样本：target > thresh_ext 的位置，惩罚漏报（pred 低时梯度大）
+        # 负样本：target <= thresh_ext 但 pred > thresh_ext 的位置，惩罚误报（pred 高时梯度大）
+        pred_flat   = pred.clamp(1e-6, 1 - 1e-6)
+        pos_mask = (target > self.thresh_ext)   # 真正极端降水位置
+        neg_mask = (~pos_mask) & (pred_flat > self.thresh_ext)  # 误报位置
+
+        loss_focal = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
+        n_terms = 0
+
+        if pos_mask.any():
+            # 正样本 focal：(1-p)^gamma * (-log p)，p 越低梯度越大
+            p_pos = pred_flat[pos_mask]
+            fl_pos = ((1 - p_pos) ** self.focal_gamma) * (-torch.log(p_pos))
+            loss_focal = loss_focal + self.focal_alpha * fl_pos.mean()
+            n_terms += 1
+
+        if neg_mask.any():
+            # 负样本 focal：p^gamma * (-log(1-p))，p 越高梯度越大
+            p_neg = pred_flat[neg_mask]
+            fl_neg = (p_neg ** self.focal_gamma) * (-torch.log(1 - p_neg))
+            loss_focal = loss_focal + (1 - self.focal_alpha) * fl_neg.mean()
+            n_terms += 1
+
+        if n_terms > 1:
+            loss_focal = loss_focal / n_terms
 
         # --- 5. 三分支加权求和 ---
-        # alpha 控制结构 vs 强度的比例，focal 分支独立叠加
         loss_main = (1 - self.alpha) * loss_structure + self.alpha * loss_intensity
         return loss_main + self.focal_weight * loss_focal
 
@@ -182,6 +197,7 @@ def train_pipeline(mode):
             warmup_epochs=CONFIG["LOSS_WARMUP_EPOCHS"],
             max_weight=CONFIG["LOSS_EXT_MAX_WEIGHT"],
             focal_weight=CONFIG["LOSS_FOCAL_WEIGHT"],
+            focal_alpha=CONFIG["LOSS_FOCAL_ALPHA"],
         ).to(device)
         train_lr = CONFIG["LR_ENHANCED"]
     
@@ -272,23 +288,39 @@ def train_pipeline(mode):
                 tracker.update(batch_metrics)
 
         avg_metrics, _, _ = tracker.result()
-        avg_csi = avg_metrics.get('CSI-74-POOL1', 0.0)
+        # Enhanced 用 CSI-219 + FAR 约束作为主指标，Baseline 仍用 CSI-74
+        if mode == 'enhanced':
+            avg_csi_219 = avg_metrics.get('CSI-219-POOL1', 0.0)
+            avg_far_219 = avg_metrics.get('FAR-219-POOL1', 0.0)
+            # score = CSI_219 - penalty * FAR_219
+            # penalty=0.3 表示 FAR 每上升 0.1，score 下降 0.03，约束误报不能过高
+            far_penalty = CONFIG["BEST_MODEL_FAR_PENALTY"]
+            val_score = avg_csi_219 - far_penalty * avg_far_219
+        else:
+            avg_csi_219 = avg_metrics.get('CSI-219-POOL1', 0.0)
+            avg_far_219 = avg_metrics.get('FAR-219-POOL1', 0.0)
+            val_score = avg_metrics.get('CSI-74-POOL1', 0.0)
+        avg_csi_74 = avg_metrics.get('CSI-74-POOL1', 0.0)
         avg_ssim = avg_metrics.get('SSIM', 0.0)
         avg_loss = train_loss / max(1, valid_steps)
         avg_grad = grad_norm_sum / max(1, grad_norm_count)
         current_lr = optimizer.param_groups[0]["lr"]
         
         logger.info(
-            f"Ep {epoch+1} | Loss: {avg_loss:.4f} | CSI-74: {avg_csi:.4f} | SSIM: {avg_ssim:.4f} | "
-            f"Grad(avg/max): {avg_grad:.4f}/{grad_norm_max:.4f} | Skip(loss/grad): {skip_loss_steps}/{skip_grad_steps} | "
+            f"Ep {epoch+1} | Loss: {avg_loss:.4f} | "
+            f"CSI-74: {avg_csi_74:.4f} | CSI-219: {avg_csi_219:.4f} | FAR-219: {avg_far_219:.4f} | "
+            f"Score: {val_score:.4f} | SSIM: {avg_ssim:.4f} | "
+            f"Grad(avg/max): {avg_grad:.4f}/{grad_norm_max:.4f} | "
+            f"Skip(loss/grad): {skip_loss_steps}/{skip_grad_steps} | "
             f"ValidSteps: {valid_steps}/{len(train_loader)} | LR: {current_lr:.6e}"
         )
         
-        if avg_csi > best_csi:
-            best_csi = avg_csi
+        if val_score > best_csi:
+            best_csi = val_score
             os.makedirs(CONFIG["CKPT_DIR"], exist_ok=True)
             torch.save(model.state_dict(), os.path.join(CONFIG["CKPT_DIR"], f"{mode}_best_csi.pth"))
-            logger.info(f"🔥 New Best CSI: {best_csi:.4f}")
+            logger.info(f"🔥 New Best Score (CSI_219 - {far_penalty}*FAR_219): {best_csi:.4f} "
+                        f"[CSI_219={avg_csi_219:.4f}, FAR_219={avg_far_219:.4f}]")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
