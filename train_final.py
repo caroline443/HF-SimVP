@@ -15,7 +15,7 @@ from model import SimVP_Baseline, SimVP_Enhanced
 from dataset_universal import SEVIRDataset
 from utils_metrics import MetricCalculator, MetricTracker
 
-# --- 全局配置 (V3.2 FAR修复版) ---
+# --- 全局配置 (V3.3 CSI-219修复版) ---
 CONFIG = {
     "DATASET_TYPE": "sevir", 
     "PATH_SEVIR": r"F:\zyx\dataset\sevir_data", # 确认路径
@@ -29,10 +29,10 @@ CONFIG = {
     "GRAD_NORM_GUARD": 10.0,  # 梯度范数过大时跳过更新
     "LOSS_GUARD": 5.0,  # loss 异常上限
     "LOSS_ALPHA_ENHANCED": 0.6,  # Enhanced 损失组合权重
-    "LOSS_WARMUP_EPOCHS": 10,     # warm-up epochs
-    "LOSS_EXT_MAX_WEIGHT": 4.0,   # 极端像素权重 8.0->4.0，避免过度偏向极端像素导致 FAR 失控
-    "LOSS_FOCAL_WEIGHT": 0.10,    # Focal 分支权重（双向 focal，同时约束漏报和误报）
-    "LOSS_FOCAL_ALPHA": 0.75,     # 双向 focal 中正样本权重（0.75 表示漏报惩罚略重于误报）
+    "LOSS_WARMUP_EPOCHS": 5,      # warm-up 缩短到 5 epoch，让极端权重更早生效
+    "LOSS_EXT_MAX_WEIGHT": 6.0,   # 极端像素权重，足够强以突破均值回归
+    "LOSS_FOCAL_WEIGHT": 0.20,    # Focal 分支权重，提高以驱动模型预测极端降水
+    "LOSS_FOCAL_ALPHA": 0.75,     # 正样本（漏报）权重，1-alpha 为负样本（误报）权重
     "BEST_MODEL_FAR_PENALTY": 0.3, # best model 判据：score = CSI_219 - FAR_PENALTY * FAR_219
     "LOG_EVERY": 100,
     "NUM_WORKERS": 4,     
@@ -115,39 +115,46 @@ class HybridLoss(nn.Module):
         l1_pixel = self.l1_loss(pred, target)
         loss_intensity = torch.mean(weights * l1_pixel)
 
-        # --- 3. MS-SSIM 结构损失 ---
-        if self.training:
-            pred_n   = pred   + torch.rand_like(pred)   * 1e-6
-            target_n = target + torch.rand_like(target) * 1e-6
-        else:
-            pred_n, target_n = pred, target
-
+        # --- 3. MS-SSIM 结构损失（加保护，防止全黑 batch 导致 nan/inf）---
         b, t, c, h, w = pred.shape
-        loss_structure = 1 - self.ssim_module(
-            pred_n.reshape(-1, c, h, w),
-            target_n.reshape(-1, c, h, w)
-        )
+        try:
+            if self.training:
+                pred_n   = pred   + torch.rand_like(pred)   * 1e-6
+                target_n = target + torch.rand_like(target) * 1e-6
+            else:
+                pred_n, target_n = pred, target
+            loss_structure = 1 - self.ssim_module(
+                pred_n.reshape(-1, c, h, w),
+                target_n.reshape(-1, c, h, w)
+            )
+            if not torch.isfinite(loss_structure):
+                loss_structure = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
+        except Exception:
+            loss_structure = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
 
         # --- 4. 双向 Focal BCE ---
-        # 正样本：target > thresh_ext 的位置，惩罚漏报（pred 低时梯度大）
-        # 负样本：target <= thresh_ext 但 pred > thresh_ext 的位置，惩罚误报（pred 高时梯度大）
-        pred_flat   = pred.clamp(1e-6, 1 - 1e-6)
-        pos_mask = (target > self.thresh_ext)   # 真正极端降水位置
-        neg_mask = (~pos_mask) & (pred_flat > self.thresh_ext)  # 误报位置
+        # 正样本：target > thresh_ext 的位置，直接对 pred 计算 BCE(pred, 1)
+        #   → 无论 pred 当前多低，梯度都会推动 pred 往 1 走（突破均值回归）
+        # 负样本：target <= thresh_ext 但 pred > thresh_ext 的位置，计算 BCE(pred, 0)
+        #   → 惩罚误报，防止 FAR 失控
+        # 两路都用 focal 调制：难样本获得更大梯度
+        pred_flat = pred.clamp(1e-6, 1 - 1e-6)
+        pos_mask  = (target > self.thresh_ext)                        # 真正极端降水
+        neg_mask  = (~pos_mask) & (pred_flat > self.thresh_ext)       # 误报位置
 
         loss_focal = torch.tensor(0.0, dtype=pred.dtype, device=self.device)
         n_terms = 0
 
         if pos_mask.any():
-            # 正样本 focal：(1-p)^gamma * (-log p)，p 越低梯度越大
             p_pos = pred_flat[pos_mask]
+            # focal 调制：p 越低（越难预测），(1-p)^gamma 越大，梯度越强
             fl_pos = ((1 - p_pos) ** self.focal_gamma) * (-torch.log(p_pos))
             loss_focal = loss_focal + self.focal_alpha * fl_pos.mean()
             n_terms += 1
 
         if neg_mask.any():
-            # 负样本 focal：p^gamma * (-log(1-p))，p 越高梯度越大
             p_neg = pred_flat[neg_mask]
+            # focal 调制：p 越高（越确信误报），p^gamma 越大，梯度越强
             fl_neg = (p_neg ** self.focal_gamma) * (-torch.log(1 - p_neg))
             loss_focal = loss_focal + (1 - self.focal_alpha) * fl_neg.mean()
             n_terms += 1
