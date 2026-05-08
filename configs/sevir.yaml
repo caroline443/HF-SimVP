@@ -1,0 +1,66 @@
+# SEVIR Dataset Configuration for SimCast
+
+dataset:
+  name: sevir
+  data_root: /data/sevir          # path to SEVIR dataset root
+  img_type: vil                   # radar echo type (vil = vertically integrated liquid)
+  resolution: 384                 # spatial resolution
+  in_len: 13                      # number of input frames (T)
+  out_len_short: 6                # short-term prediction horizon (T'_s)
+  out_len_long: 12                # long-term prediction horizon (T'_l)
+  interval: 5                     # minutes between frames
+  # intensity threshold for weighted MSE (highest rainfall category)
+  intensity_threshold: 219
+  # normalization: VIL values are in [0, 255]
+  normalize: false
+
+dataloader:
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+
+model:
+  # SimVP architecture
+  in_shape: [13, 1, 384, 384]     # [T, C, H, W]
+  hid_S: 64                       # spatial hidden dim
+  hid_T: 512                      # temporal hidden dim
+  N_S: 2                          # number of spatial blocks (encoder/decoder)
+  N_T: 4                          # number of temporal blocks (translator)
+  translator: inception_unet      # translator type
+
+loss:
+  wmax: 10                        # weight for high-intensity pixels
+  tau: 219                        # intensity threshold
+
+optimizer:
+  type: adam
+  lr: 0.005
+  weight_decay: 0.0
+
+scheduler:
+  type: onecycle
+  max_lr: 0.005
+  pct_start: 0.3
+
+training:
+  max_epochs: 100
+  val_interval: 5                 # validate every N epochs
+  save_top_k: 3
+  early_stop_patience: 20
+  grad_clip: 1.0
+  seed: 42
+
+checkpoints:
+  dir: checkpoints/sevir
+  stage1_name: stage1_best.pth
+  stage2_name: stage2_best.pth
+
+logging:
+  log_dir: logs/sevir
+  log_interval: 50                # log every N batches
+
+evaluation:
+  # CSI thresholds (VIL pixel values)
+  csi_thresholds: [16, 74, 133, 160, 181, 219]
+  pool_sizes: [1, 4, 16]
+  n_ensemble: 1                   # deterministic model, no ensemble
