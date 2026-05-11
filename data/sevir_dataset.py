@@ -9,15 +9,11 @@ SEVIR (Storm EVent ImageRy) dataset:
       Train: 35,718 | Val: 9,060 | Test: 12,159
 
 Dataset structure (HDF5 files):
-  sevir/
-    data/
-      vil/
-        SEVIR_VIL_STORMEVENTS_2018_0101_0630.h5
-        SEVIR_VIL_STORMEVENTS_2018_0701_1231.h5
-        ...
-        SEVIR_VIL_RANDOMEVENTS_2018_0101_0630.h5
-        ...
-    CATALOG.csv
+  sevir_data/
+    SEVIR_VIL_STORMEVENTS_2017_0101_0630.h5
+    SEVIR_VIL_STORMEVENTS_2017_0701_1231.h5
+    SEVIR_VIL_RANDOMEVENTS_2017_0501_0831.h5
+    ...  (all .h5 files directly in data_root)
 
 Each HDF5 file contains:
   - 'vil': (N_events, 49, 384, 384) uint8 array
@@ -49,11 +45,18 @@ SEVIR_VIL_MAX = 255.0       # VIL pixel value range [0, 255]
 SEVIR_TOTAL_FRAMES = 49     # total frames per event (4 hours at 5-min intervals)
 
 # Train/val/test split by year and month (following SimCast / CasCast)
-# Events from 2018-2019 are used; test set = month >= 5 of 2019
+# Available data: 2017-2019
+# - test:  2019 month >= 5  (RANDOMEVENTS_2019_0501+ and STORMEVENTS_2019_0701+)
+# - val:   2019 month 01-04 (RANDOMEVENTS_2019_0101 and STORMEVENTS_2019_0101)
+# - train: everything else (2017, 2018, and 2019 before May)
+def _is_test(year, month):  return year == 2019 and month >= 5
+def _is_val(year, month):   return year == 2019 and month < 5
+def _is_train(year, month): return year < 2019
+
 SPLIT_RULES = {
-    "train": lambda year, month: not (year == 2019 and month >= 5),
-    "val":   lambda year, month: (year == 2019 and month in [3, 4]),
-    "test":  lambda year, month: (year == 2019 and month >= 5),
+    "train": _is_train,
+    "val":   _is_val,
+    "test":  _is_test,
 }
 
 
@@ -121,13 +124,13 @@ class SEVIRDataset(Dataset):
         Load all VIL sequences from HDF5 files.
         Returns a list of arrays, each of shape (N_windows, seq_len, H, W).
         """
-        vil_dir = os.path.join(self.data_root, "data", "vil")
-        h5_files = sorted(glob.glob(os.path.join(vil_dir, "*.h5")))
+        # H5 files sit directly inside data_root (no data/vil/ subdirectory)
+        h5_files = sorted(glob.glob(os.path.join(self.data_root, "SEVIR_VIL_*.h5")))
 
         if len(h5_files) == 0:
             raise FileNotFoundError(
-                f"No HDF5 files found in {vil_dir}. "
-                f"Please download SEVIR from https://registry.opendata.aws/sevir/"
+                f"No HDF5 files found in {self.data_root}. "
+                f"Expected files matching SEVIR_VIL_*.h5 directly in that directory."
             )
 
         all_samples = []
