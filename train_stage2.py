@@ -415,7 +415,9 @@ def main():
         lr=cfg["optimizer"]["lr"],
         weight_decay=cfg["optimizer"]["weight_decay"],
     )
-    total_steps = len(train_loader) * cfg["training"]["max_epochs"]
+    grad_accum = cfg.get("grad_accum_steps", 1)
+    steps_per_epoch = (len(train_loader) + grad_accum - 1) // grad_accum
+    total_steps = steps_per_epoch * cfg["training"]["max_epochs"]
     scheduler = OneCycleLR(
         optimizer,
         max_lr=cfg["scheduler"]["max_lr"],

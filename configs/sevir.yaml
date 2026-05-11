@@ -37,13 +37,13 @@ loss:
 
 optimizer:
   type: adam
-  lr: 0.005
+  lr: 0.0001          # warmup start lr (OneCycleLR div_factor=25 -> start = max_lr/25)
   weight_decay: 0.0
 
 scheduler:
   type: onecycle
-  max_lr: 0.005
-  pct_start: 0.3
+  max_lr: 0.0005      # reduced from 0.005 (10x lower for unscaled VIL 0-255 range)
+  pct_start: 0.3      # 30% warmup
 
 training:
   max_epochs: 100
