@@ -21,7 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 import yaml
 
 from models import SimVP
@@ -242,14 +242,25 @@ def main():
     )
     # total_steps must match the actual number of optimizer.step() calls,
     # which is divided by grad_accum_steps (not raw batch count)
-    grad_accum = cfg.get("grad_accum_steps", 1)
-    steps_per_epoch = (len(train_loader) + grad_accum - 1) // grad_accum
-    total_steps = steps_per_epoch * cfg["training"]["max_epochs"]
-    scheduler = OneCycleLR(
+    warmup_epochs = cfg["scheduler"].get("warmup_epochs", 5)
+    max_epochs = cfg["training"]["max_epochs"]
+    min_lr = cfg["scheduler"].get("min_lr", cfg["optimizer"]["lr"] * 0.1)
+    # Linear warmup for warmup_epochs, then cosine decay to min_lr
+    scheduler_warmup = LinearLR(
         optimizer,
-        max_lr=cfg["scheduler"]["max_lr"],
-        total_steps=total_steps,
-        pct_start=cfg["scheduler"]["pct_start"],
+        start_factor=0.1,
+        end_factor=1.0,
+        total_iters=warmup_epochs,
+    )
+    scheduler_cosine = CosineAnnealingLR(
+        optimizer,
+        T_max=max_epochs - warmup_epochs,
+        eta_min=min_lr,
+    )
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[scheduler_warmup, scheduler_cosine],
+        milestones=[warmup_epochs],
     )
 
     # Metrics
@@ -281,14 +292,17 @@ def main():
     for epoch in range(start_epoch, max_epochs + 1):
         t0 = time.time()
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, scheduler, criterion,
+            model, train_loader, optimizer, None, criterion,
             device, logger, epoch,
             log_interval=cfg["logging"]["log_interval"],
             grad_clip=cfg["training"]["grad_clip"],
             grad_accum_steps=cfg.get("grad_accum_steps", 1),
         )
+        # Step scheduler once per epoch (cosine annealing is epoch-level)
+        scheduler.step()
         elapsed = time.time() - t0
-        logger.info(f"Epoch {epoch}/{max_epochs} | Train Loss: {train_loss:.4f} | Time: {elapsed:.1f}s")
+        cur_lr = optimizer.param_groups[0]["lr"]
+        logger.info(f"Epoch {epoch}/{max_epochs} | Train Loss: {train_loss:.4f} | LR: {cur_lr:.6f} | Time: {elapsed:.1f}s")
 
         # Validation
         if epoch % val_interval == 0 or epoch == max_epochs:

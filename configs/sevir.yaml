@@ -37,13 +37,13 @@ loss:
 
 optimizer:
   type: adam
-  lr: 0.0001          # warmup start lr (OneCycleLR div_factor=25 -> start = max_lr/25)
+  lr: 0.0005          # paper uses 0.005 on A40(48GB); scaled down 10x for A4000(16GB)+grad_accum
   weight_decay: 0.0
 
 scheduler:
-  type: onecycle
-  max_lr: 0.0005      # reduced from 0.005 (10x lower for unscaled VIL 0-255 range)
-  pct_start: 0.3      # 30% warmup
+  type: cosine        # cosine annealing, gentler than OneCycleLR
+  min_lr: 0.00005     # decay floor = lr / 10
+  warmup_epochs: 5    # short linear warmup before cosine decay
 
 training:
   max_epochs: 100
