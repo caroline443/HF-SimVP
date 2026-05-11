@@ -88,29 +88,34 @@ def train_one_epoch(
     epoch: int,
     log_interval: int = 50,
     grad_clip: float = 1.0,
+    grad_accum_steps: int = 1,
 ) -> float:
     model.train()
     total_loss = 0.0
     n_batches = 0
 
+    optimizer.zero_grad()
+
     for batch_idx, (inputs, targets) in enumerate(loader):
         inputs = inputs.to(device)    # (B, T_in, 1, H, W)
         targets = targets.to(device)  # (B, T_out, 1, H, W)
 
-        optimizer.zero_grad()
         preds = model(inputs)         # (B, T_out, 1, H, W)
-        loss = criterion(preds, targets)
+        # Scale loss so effective gradient magnitude matches original batch_size
+        loss = criterion(preds, targets) / grad_accum_steps
         loss.backward()
 
-        if grad_clip > 0:
-            nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-
-        optimizer.step()
-        if scheduler is not None:
-            scheduler.step()
-
-        total_loss += loss.item()
+        total_loss += loss.item() * grad_accum_steps   # log unscaled loss
         n_batches += 1
+
+        is_last_batch = (batch_idx + 1 == len(loader))
+        if (batch_idx + 1) % grad_accum_steps == 0 or is_last_batch:
+            if grad_clip > 0:
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+            optimizer.zero_grad()
 
         if (batch_idx + 1) % log_interval == 0:
             avg_loss = total_loss / n_batches
@@ -267,6 +272,7 @@ def main():
             device, logger, epoch,
             log_interval=cfg["logging"]["log_interval"],
             grad_clip=cfg["training"]["grad_clip"],
+            grad_accum_steps=cfg.get("grad_accum_steps", 1),
         )
         elapsed = time.time() - t0
         logger.info(f"Epoch {epoch}/{max_epochs} | Train Loss: {train_loss:.4f} | Time: {elapsed:.1f}s")
