@@ -147,12 +147,14 @@ def augment_dataset_with_stage1(
         batch_originals = []
 
         for idx in batch_indices:
-            # Get the full original sample
-            sample = train_dataset.samples[idx]  # (seq_len, H, W)
-            # Use first T_in frames as input context
-            inp = sample[:T_in]  # (T_in, H, W)
+            # Read the full seq_len window via lazy loader
+            ref = train_dataset.index[idx]
+            seq = train_dataset._read_event_frames(
+                ref.h5_path, ref.event_idx, ref.frame_start, train_dataset.seq_len
+            )  # (seq_len, H, W)
+            inp = seq[:T_in]  # (T_in, H, W)
             batch_inputs.append(inp)
-            batch_originals.append(sample)
+            batch_originals.append(seq)
 
         # Stack and move to device
         inputs_tensor = torch.from_numpy(

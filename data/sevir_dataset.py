@@ -4,19 +4,22 @@ SEVIR Dataset Loader for SimCast.
 SEVIR (Storm EVent ImageRy) dataset:
   - VIL (Vertically Integrated Liquid) radar echoes
   - Resolution: 384x384, 5-minute intervals
-  - Each event: 49 frames (4 hours)
-  - Train/Val/Test split following SimCast paper:
-      Train: 35,718 | Val: 9,060 | Test: 12,159
+  - Each event: 49 frames (4 hours at 5-min intervals)
+  - Train/Val/Test split following SimCast paper
 
-Dataset structure (HDF5 files):
+Dataset structure (HDF5 files, all directly in data_root):
   sevir_data/
     SEVIR_VIL_STORMEVENTS_2017_0101_0630.h5
     SEVIR_VIL_STORMEVENTS_2017_0701_1231.h5
     SEVIR_VIL_RANDOMEVENTS_2017_0501_0831.h5
-    ...  (all .h5 files directly in data_root)
+    ...
 
 Each HDF5 file contains:
-  - 'vil': (N_events, 49, 384, 384) uint8 array
+  - 'vil': (N_events, 49, 384, 384) uint8  -- note: some files use (N, H, W, T) layout!
+
+Design: LAZY LOADING — only store (file_path, event_idx, frame_start) tuples
+during __init__, and read slices from HDF5 on-the-fly in __getitem__.
+This avoids loading 11+ GiB per file into RAM.
 
 Reference:
   Veillette et al., "SEVIR: A Storm Event Imagery Dataset for Deep Learning
@@ -28,7 +31,7 @@ import glob
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, NamedTuple
 
 try:
     import h5py
@@ -46,9 +49,9 @@ SEVIR_TOTAL_FRAMES = 49     # total frames per event (4 hours at 5-min intervals
 
 # Train/val/test split by year and month (following SimCast / CasCast)
 # Available data: 2017-2019
-# - test:  2019 month >= 5  (RANDOMEVENTS_2019_0501+ and STORMEVENTS_2019_0701+)
-# - val:   2019 month 01-04 (RANDOMEVENTS_2019_0101 and STORMEVENTS_2019_0101)
-# - train: everything else (2017, 2018, and 2019 before May)
+# - test:  2019 month >= 5
+# - val:   2019 month  < 5
+# - train: 2017 and 2018 (all months)
 def _is_test(year, month):  return year == 2019 and month >= 5
 def _is_val(year, month):   return year == 2019 and month < 5
 def _is_train(year, month): return year < 2019
@@ -61,22 +64,33 @@ SPLIT_RULES = {
 
 
 # ---------------------------------------------------------------------------
+# Sample index entry
+# ---------------------------------------------------------------------------
+
+class SampleRef(NamedTuple):
+    """Lightweight reference to a single sliding-window sample."""
+    h5_path: str      # path to HDF5 file
+    event_idx: int    # index of the weather event within the file
+    frame_start: int  # starting frame index within the event
+    n_frames: int     # total frames in this event (for bounds checking)
+    time_last: int    # = frame_start + seq_len  (exclusive end)
+
+
+# ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
 
 class SEVIRDataset(Dataset):
     """
-    SEVIR VIL dataset for precipitation nowcasting.
+    SEVIR VIL dataset with lazy HDF5 loading.
 
     Each sample is a tuple (input_seq, target_seq) where:
-      input_seq:  (T_in, 1, H, W)  float32 in [0, 255]
-      target_seq: (T_out, 1, H, W) float32 in [0, 255]
+      input_seq:  (T_in,  1, H, W)  float32 in [0, 255]
+      target_seq: (T_out, 1, H, W)  float32 in [0, 255]
 
-    The dataset supports two modes:
-      - 'short': T_out = out_len_short (Stage 1 training)
-      - 'long':  T_out = out_len_long  (Stage 2 training / evaluation)
-
-    For Stage 2, augmented samples can be provided via set_augmented_data().
+    Lazy loading: HDF5 files are NOT kept open between __getitem__ calls,
+    only per-sample (file, event_idx, frame_start) references are stored.
+    This keeps memory usage at ~few MB regardless of dataset size.
     """
 
     def __init__(
@@ -85,22 +99,20 @@ class SEVIRDataset(Dataset):
         split: str = "train",
         in_len: int = 13,
         out_len: int = 12,
-        seq_len: int = 25,          # in_len + out_len, used for sliding window
-        stride: int = 12,           # stride for sliding window within an event
+        stride: int = 12,
         normalize: bool = False,
         augmented_data: Optional[np.ndarray] = None,
     ):
         """
         Args:
-            data_root:       path to SEVIR dataset root directory
-            split:           'train', 'val', or 'test'
-            in_len:          number of input frames (T_in)
-            out_len:         number of output frames to predict (T_out)
-            seq_len:         total sequence length = in_len + out_len
-            stride:          sliding window stride within each event
-            normalize:       if True, normalize to [0, 1]
-            augmented_data:  optional pre-computed augmented sequences
-                             shape: (N, seq_len_aug, 1, H, W)
+            data_root:      path to directory containing SEVIR_VIL_*.h5 files
+            split:          'train', 'val', or 'test'
+            in_len:         number of input frames (T_in)
+            out_len:        number of output frames to predict (T_out)
+            stride:         sliding window stride within each event
+            normalize:      if True, normalize pixel values to [0, 1]
+            augmented_data: optional pre-computed augmented sequences for Stage 2
+                            shape: (N, seq_len_aug, H, W) float32
         """
         assert HAS_H5PY, "h5py is required. Install with: pip install h5py"
         assert split in ("train", "val", "test"), f"Invalid split: {split}"
@@ -109,22 +121,22 @@ class SEVIRDataset(Dataset):
         self.split = split
         self.in_len = in_len
         self.out_len = out_len
-        self.seq_len = seq_len
+        self.seq_len = in_len + out_len
         self.stride = stride
         self.normalize = normalize
 
-        # Load all VIL data into memory (or use lazy loading for large datasets)
-        self.samples = self._load_samples()
+        # Build lightweight index (no data loaded into memory)
+        self.index: List[SampleRef] = self._build_index()
+        print(f"[SEVIRDataset] split={split}, samples={len(self.index)}")
 
         # Optional augmented data for Stage 2
         self.augmented_data = augmented_data
 
-    def _load_samples(self) -> List[np.ndarray]:
+    def _build_index(self) -> List[SampleRef]:
         """
-        Load all VIL sequences from HDF5 files.
-        Returns a list of arrays, each of shape (N_windows, seq_len, H, W).
+        Scan HDF5 files and record (file, event_idx, frame_start) for each
+        valid sliding-window sample. No actual data is read here.
         """
-        # H5 files sit directly inside data_root (no data/vil/ subdirectory)
         h5_files = sorted(glob.glob(os.path.join(self.data_root, "SEVIR_VIL_*.h5")))
 
         if len(h5_files) == 0:
@@ -133,62 +145,97 @@ class SEVIRDataset(Dataset):
                 f"Expected files matching SEVIR_VIL_*.h5 directly in that directory."
             )
 
-        all_samples = []
+        index = []
+        split_fn = SPLIT_RULES[self.split]
 
         for h5_path in h5_files:
-            # Parse year and month from filename
-            # e.g., SEVIR_VIL_STORMEVENTS_2018_0101_0630.h5
             fname = os.path.basename(h5_path)
             try:
                 parts = fname.split("_")
                 year = int(parts[3])
                 month_start = int(parts[4][:2])
             except (IndexError, ValueError):
-                # Skip files that don't match expected naming
                 continue
 
-            # Apply split filter
-            split_fn = SPLIT_RULES[self.split]
             if not split_fn(year, month_start):
                 continue
 
+            # Open file just to read the shape metadata, not the data
             with h5py.File(h5_path, "r") as f:
                 if "vil" not in f:
                     continue
-                # Shape: (N_events, 49, 384, 384)
-                vil_data = f["vil"][:]  # load into memory
+                shape = f["vil"].shape  # e.g. (N_events, 49, 384, 384)
 
-            # Extract sliding window samples from each event
-            for event_idx in range(vil_data.shape[0]):
-                event = vil_data[event_idx]  # (49, 384, 384)
-                n_frames = event.shape[0]
+            # Detect layout: (N, T, H, W) vs (N, H, W, T)
+            # SEVIR official files use (N, 49, 384, 384)
+            # Some re-packed files use (N, 384, 384, 49)
+            n_events = shape[0]
+            # Determine which dim is time (49 frames)
+            if shape[1] == SEVIR_TOTAL_FRAMES:
+                n_frames = shape[1]   # layout: (N, T, H, W)
+            elif shape[3] == SEVIR_TOTAL_FRAMES:
+                n_frames = shape[3]   # layout: (N, H, W, T)
+            else:
+                # fallback: assume dim1 is time
+                n_frames = shape[1]
 
+            for event_idx in range(n_events):
                 start = 0
                 while start + self.seq_len <= n_frames:
-                    seq = event[start: start + self.seq_len]  # (seq_len, 384, 384)
-                    all_samples.append(seq.astype(np.float32))
+                    index.append(SampleRef(
+                        h5_path=h5_path,
+                        event_idx=event_idx,
+                        frame_start=start,
+                        n_frames=n_frames,
+                        time_last=start + self.seq_len,
+                    ))
                     start += self.stride
 
-        if len(all_samples) == 0:
+        if len(index) == 0:
             raise RuntimeError(
                 f"No samples found for split='{self.split}'. "
                 f"Check data_root={self.data_root} and split rules."
             )
 
-        return all_samples
+        return index
+
+    def _read_event_frames(self, h5_path: str, event_idx: int,
+                           frame_start: int, length: int) -> np.ndarray:
+        """
+        Read `length` consecutive frames from a single event in an HDF5 file.
+
+        Returns:
+            frames: (length, H, W) float32
+        """
+        with h5py.File(h5_path, "r") as f:
+            ds = f["vil"]
+            shape = ds.shape
+            frame_end = frame_start + length
+
+            # Detect layout
+            if shape[1] == SEVIR_TOTAL_FRAMES:
+                # (N, T, H, W)
+                frames = ds[event_idx, frame_start:frame_end, :, :]  # (T, H, W)
+            else:
+                # (N, H, W, T)
+                frames = ds[event_idx, :, :, frame_start:frame_end]  # (H, W, T)
+                frames = frames.transpose(2, 0, 1)                    # (T, H, W)
+
+        return frames.astype(np.float32)
 
     def set_augmented_data(self, augmented_data: np.ndarray):
         """
-        Set augmented training data for Stage 2.
+        Set augmented training data for Stage 2 knowledge distillation.
 
         Args:
             augmented_data: (N, seq_len_aug, H, W) float32 array
-                            where seq_len_aug = in_len + out_len_long + out_len_long
         """
         self.augmented_data = augmented_data
+        print(f"[SEVIRDataset] augmented samples added: {len(augmented_data)}, "
+              f"total: {len(self)}")
 
     def __len__(self) -> int:
-        n = len(self.samples)
+        n = len(self.index)
         if self.augmented_data is not None:
             n += len(self.augmented_data)
         return n
@@ -196,41 +243,47 @@ class SEVIRDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
-            input_seq:  (T_in, 1, H, W) float32
+            input_seq:  (T_in,  1, H, W) float32
             target_seq: (T_out, 1, H, W) float32
         """
-        n_orig = len(self.samples)
+        n_orig = len(self.index)
 
         if idx < n_orig:
-            seq = self.samples[idx]  # (seq_len, H, W)
+            ref = self.index[idx]
+
+            # Random sub-sequence sampling (SimCast training trick):
+            # The stored seq_len is the base window. For training we can
+            # randomly shift the start within the event to boost diversity.
+            if self.split == "train":
+                max_shift = ref.n_frames - ref.frame_start - self.seq_len
+                shift = np.random.randint(0, max(max_shift + 1, 1))
+            else:
+                shift = 0
+
+            actual_start = ref.frame_start + shift
+            seq = self._read_event_frames(
+                ref.h5_path, ref.event_idx, actual_start, self.seq_len
+            )  # (seq_len, H, W)
+
         else:
-            # Augmented sample
+            # Augmented sample (already in RAM as numpy array)
             aug_idx = idx - n_orig
             seq = self.augmented_data[aug_idx]  # (seq_len_aug, H, W)
 
-        # Random sub-sequence sampling (as described in SimCast)
-        # For training, randomly sample a starting point within the sequence
-        # to increase diversity
-        total_len = seq.shape[0]
-        needed = self.in_len + self.out_len
+            if self.split == "train" and seq.shape[0] > self.seq_len:
+                max_start = seq.shape[0] - self.seq_len
+                start = np.random.randint(0, max_start + 1)
+                seq = seq[start: start + self.seq_len]
 
-        if total_len > needed and self.split == "train":
-            max_start = total_len - needed
-            start = np.random.randint(0, max_start + 1)
-        else:
-            start = 0
+        input_seq  = seq[:self.in_len]   # (T_in,  H, W)
+        target_seq = seq[self.in_len:]   # (T_out, H, W)
 
-        seq = seq[start: start + needed]  # (in_len + out_len, H, W)
-
-        input_seq = seq[:self.in_len]           # (T_in, H, W)
-        target_seq = seq[self.in_len:]          # (T_out, H, W)
-
-        # Add channel dimension
-        input_seq = input_seq[:, np.newaxis, :, :]   # (T_in, 1, H, W)
-        target_seq = target_seq[:, np.newaxis, :, :]  # (T_out, 1, H, W)
+        # Add channel dimension: -> (T, 1, H, W)
+        input_seq  = input_seq[:, np.newaxis, :, :]
+        target_seq = target_seq[:, np.newaxis, :, :]
 
         if self.normalize:
-            input_seq = input_seq / SEVIR_VIL_MAX
+            input_seq  = input_seq  / SEVIR_VIL_MAX
             target_seq = target_seq / SEVIR_VIL_MAX
 
         return (
@@ -258,57 +311,34 @@ def build_sevir_dataloaders(
     Returns:
         train_loader, val_loader, test_loader
     """
-    seq_len = in_len + out_len
-
     train_ds = SEVIRDataset(
-        data_root=data_root,
-        split="train",
-        in_len=in_len,
-        out_len=out_len,
-        seq_len=seq_len,
-        stride=12,
-        normalize=normalize,
+        data_root=data_root, split="train",
+        in_len=in_len, out_len=out_len, stride=12, normalize=normalize,
     )
     val_ds = SEVIRDataset(
-        data_root=data_root,
-        split="val",
-        in_len=in_len,
-        out_len=out_len,
-        seq_len=seq_len,
-        stride=seq_len,  # no overlap for val/test
+        data_root=data_root, split="val",
+        in_len=in_len, out_len=out_len,
+        stride=in_len + out_len,  # no overlap for val/test
         normalize=normalize,
     )
     test_ds = SEVIRDataset(
-        data_root=data_root,
-        split="test",
-        in_len=in_len,
-        out_len=out_len,
-        seq_len=seq_len,
-        stride=seq_len,
+        data_root=data_root, split="test",
+        in_len=in_len, out_len=out_len,
+        stride=in_len + out_len,
         normalize=normalize,
     )
 
     train_loader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=True,
+        train_ds, batch_size=batch_size, shuffle=True,
+        num_workers=num_workers, pin_memory=pin_memory, drop_last=True,
     )
     val_loader = DataLoader(
-        val_ds,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
+        val_ds, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=pin_memory,
     )
     test_loader = DataLoader(
-        test_ds,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
+        test_ds, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=pin_memory,
     )
 
     return train_loader, val_loader, test_loader
