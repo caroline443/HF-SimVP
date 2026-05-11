@@ -207,6 +207,8 @@ def train_one_epoch(
     model.train()
     total_loss = 0.0
     n_batches = 0
+    recent_losses = []
+    RECENT_WINDOW = 50
 
     optimizer.zero_grad()
 
@@ -218,8 +220,12 @@ def train_one_epoch(
         loss = criterion(preds, targets) / grad_accum_steps
         loss.backward()
 
-        total_loss += loss.item() * grad_accum_steps
+        unscaled = loss.item() * grad_accum_steps
+        total_loss += unscaled
         n_batches += 1
+        recent_losses.append(unscaled)
+        if len(recent_losses) > RECENT_WINDOW:
+            recent_losses.pop(0)
 
         is_last_batch = (batch_idx + 1 == len(loader))
         if (batch_idx + 1) % grad_accum_steps == 0 or is_last_batch:
@@ -231,11 +237,12 @@ def train_one_epoch(
             optimizer.zero_grad()
 
         if (batch_idx + 1) % log_interval == 0:
-            avg_loss = total_loss / n_batches
+            recent_avg = sum(recent_losses) / len(recent_losses)
+            epoch_avg  = total_loss / n_batches
             lr = optimizer.param_groups[0]["lr"]
             logger.info(
                 f"Epoch {epoch} | Batch {batch_idx+1}/{len(loader)} | "
-                f"Loss: {avg_loss:.4f} | LR: {lr:.6f}"
+                f"Loss(recent/epoch): {recent_avg:.1f}/{epoch_avg:.1f} | LR: {lr:.6f}"
             )
 
     return total_loss / max(n_batches, 1)
