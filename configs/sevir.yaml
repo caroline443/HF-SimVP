@@ -15,18 +15,18 @@ dataset:
   normalize: false
 
 dataloader:
-  batch_size: 2           # 降低 batch size，减少显存占用（原 8）
-  num_workers: 2          # 降低 worker 数，减少 shared memory 占用（原 4）
-  pin_memory: false       # 关闭 pin_memory，避免额外锁页内存（原 true）
+  batch_size: 2           # reduced from 8 to lower VRAM usage
+  num_workers: 2          # reduced from 4 to lower shared memory usage
+  pin_memory: false       # disabled to avoid extra pinned memory (was true)
 
-# gradient accumulation: 等效 batch_size = 2 × 4 = 8
+# gradient accumulation: effective batch_size = 2 x 4 = 8
 grad_accum_steps: 4
 
 model:
   # SimVP architecture
   in_shape: [13, 1, 384, 384]     # [T, C, H, W]
   hid_S: 64                       # spatial hidden dim
-  hid_T: 256                      # temporal hidden dim（原 512，减半降显存）
+  hid_T: 256                      # temporal hidden dim (reduced from 512 to save VRAM)
   N_S: 2                          # number of spatial blocks (encoder/decoder)
   N_T: 4                          # number of temporal blocks (translator)
   translator: inception_unet      # translator type
