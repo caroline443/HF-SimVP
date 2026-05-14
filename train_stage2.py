@@ -294,11 +294,15 @@ def main():
                         help="Skip data augmentation (use if already done)")
     parser.add_argument("--aug_cache", type=str, default=None,
                         help="Path to cached augmented data (.npy file)")
+    parser.add_argument("--max_epochs", type=int, default=None,
+                        help="Override max_epochs in config (e.g. 15 for a quick trial)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     if args.data_root:
         cfg["dataset"]["data_root"] = args.data_root
+    if args.max_epochs is not None:
+        cfg["training"]["max_epochs"] = args.max_epochs
 
     set_seed(cfg["training"]["seed"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
