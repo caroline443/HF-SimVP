@@ -344,7 +344,6 @@ def main():
         split="train",
         in_len=T_in,
         out_len=T_out_long,
-        seq_len=T_in + T_out_long,
         stride=12,
         normalize=cfg["dataset"]["normalize"],
     )
