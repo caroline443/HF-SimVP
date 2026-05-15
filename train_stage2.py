@@ -375,9 +375,8 @@ def main():
 
     if os.path.exists(aug_cache_path) and not args.skip_augmentation:
         logger.info(f"Found cached augmented data at {aug_cache_path}, loading as memmap...")
-        aug_mmap = np.load(aug_cache_path, mmap_mode="r")
-        # synth_only=True: cache stores only synthetic frames (float16)
-        train_ds.set_augmented_data(aug_mmap, synth_only=True)
+        # Pass file path (not memmap object) so Windows spawn workers can pickle Dataset
+        train_ds.set_augmented_data(aug_cache_path, synth_only=True)
         logger.info(f"Training dataset size after augmentation: {len(train_ds)}")
     elif not args.skip_augmentation:
         augment_dataset_with_stage1(
@@ -391,10 +390,8 @@ def main():
             batch_size=cfg["dataloader"]["batch_size"] * 2,
             cache_path=aug_cache_path,
         )
-        # Load back as memmap (read-only, no RAM copy)
-        aug_mmap = np.load(aug_cache_path, mmap_mode="r")
-        # synth_only=True: cache stores only synthetic frames (float16)
-        train_ds.set_augmented_data(aug_mmap, synth_only=True)
+        # Pass file path (not memmap object) so Windows spawn workers can pickle Dataset
+        train_ds.set_augmented_data(aug_cache_path, synth_only=True)
         logger.info(f"Training dataset size after augmentation: {len(train_ds)}")
     else:
         logger.info("Skipping data augmentation")

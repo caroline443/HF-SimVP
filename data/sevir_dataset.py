@@ -130,8 +130,18 @@ class SEVIRDataset(Dataset):
         print(f"[SEVIRDataset] split={split}, samples={len(self.index)}")
 
         # Optional augmented data for Stage 2
+        # NOTE: store only the file path (not the memmap object) so that
+        # Windows multiprocessing spawn can pickle this Dataset without OOM.
+        # The memmap is opened lazily per-worker in __getitem__.
+        self._aug_cache_path: Optional[str] = None
+        self._aug_synth_only: bool = False
+        self._aug_n: int = 0
+        # Legacy: accept an in-memory array directly (Linux / num_workers=0)
         self.augmented_data = augmented_data
-        self._aug_synth_only = False  # set to True when cache stores only synthetic frames
+        if augmented_data is not None:
+            self._aug_n = len(augmented_data)
+        # Per-worker memmap handle (not pickled, opened on first __getitem__)
+        self._aug_mmap: Optional[np.ndarray] = None
 
     def _build_index(self) -> List[SampleRef]:
         """
@@ -224,29 +234,50 @@ class SEVIRDataset(Dataset):
 
         return frames.astype(np.float32)
 
-    def set_augmented_data(self, augmented_data: np.ndarray, synth_only: bool = False):
+    def set_augmented_data(
+        self,
+        augmented_data,  # np.ndarray OR str (file path)
+        synth_only: bool = False,
+    ):
         """
         Set augmented training data for Stage 2 knowledge distillation.
 
         Args:
             augmented_data: either
-              - (N, seq_len_aug, H, W) float32/float16 array  [synth_only=False]
-                  full augmented sequences (original + synthetic frames)
-              - (N, T_out_long, H, W) float16 array           [synth_only=True]
-                  only the synthetic frames appended by Stage 1;
-                  original frames are read on-the-fly from HDF5
-            synth_only: if True, augmented_data contains only synthetic frames
+              - str: path to a .npy memmap file (recommended on Windows)
+              - np.ndarray: in-memory array (only safe with num_workers=0)
+            synth_only: cache stores only synthetic frames (T_out_long, H, W)
         """
-        self.augmented_data = augmented_data
         self._aug_synth_only = synth_only
-        print(f"[SEVIRDataset] augmented samples added: {len(augmented_data)}, "
+        self._aug_mmap = None  # reset per-worker handle
+
+        if isinstance(augmented_data, str):
+            # Store path only — memmap opened lazily in __getitem__
+            self._aug_cache_path = augmented_data
+            # Peek at shape to get N without loading data
+            tmp = np.load(augmented_data, mmap_mode="r")
+            self._aug_n = len(tmp)
+            del tmp
+            self.augmented_data = None  # not stored in-memory
+        else:
+            self._aug_cache_path = None
+            self.augmented_data = augmented_data
+            self._aug_n = len(augmented_data) if augmented_data is not None else 0
+
+        print(f"[SEVIRDataset] augmented samples added: {self._aug_n}, "
               f"total: {len(self)}, synth_only={synth_only}")
 
+    def _get_aug_mmap(self) -> np.ndarray:
+        """Open (or reuse) the per-worker memmap handle."""
+        if self._aug_mmap is None:
+            if self._aug_cache_path is not None:
+                self._aug_mmap = np.load(self._aug_cache_path, mmap_mode="r")
+            else:
+                self._aug_mmap = self.augmented_data
+        return self._aug_mmap
+
     def __len__(self) -> int:
-        n = len(self.index)
-        if self.augmented_data is not None:
-            n += len(self.augmented_data)
-        return n
+        return len(self.index) + self._aug_n
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -274,20 +305,20 @@ class SEVIRDataset(Dataset):
             )  # (seq_len, H, W)
 
         else:
-            # Augmented sample
+            # Augmented sample — open memmap lazily (safe for Windows spawn)
             aug_idx = idx - n_orig
+            mmap = self._get_aug_mmap()
 
-            if getattr(self, "_aug_synth_only", False):
-                # augmented_data holds only synthetic frames (T_out_long, H, W)
-                # Read the corresponding original frames from HDF5 first
-                ref = self.index[aug_idx % n_orig]  # map back to original sample
+            if self._aug_synth_only:
+                # cache stores only synthetic frames (T_out_long, H, W)
+                ref = self.index[aug_idx % n_orig]
                 orig_seq = self._read_event_frames(
                     ref.h5_path, ref.event_idx, ref.frame_start, self.seq_len
                 )  # (seq_len, H, W)
-                synth = self.augmented_data[aug_idx].astype(np.float32)  # (T_out_long, H, W)
+                synth = mmap[aug_idx].astype(np.float32)  # (T_out_long, H, W)
                 seq = np.concatenate([orig_seq, synth], axis=0)  # (seq_len+T_out_long, H, W)
             else:
-                seq = self.augmented_data[aug_idx].astype(np.float32)  # (seq_len_aug, H, W)
+                seq = mmap[aug_idx].astype(np.float32)  # (seq_len_aug, H, W)
 
             if self.split == "train" and seq.shape[0] > self.seq_len:
                 max_start = seq.shape[0] - self.seq_len
