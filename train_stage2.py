@@ -95,20 +95,16 @@ def augment_dataset_with_stage1(
     device: torch.device,
     logger: logging.Logger,
     batch_size: int = 16,
-) -> np.ndarray:
+    cache_path: str = None,
+) -> str:
     """
     Use the Stage 1 model autoregressively to extend each training sample.
+    Results are written to a memory-mapped file on disk to avoid RAM OOM.
 
-    For each training sample of shape (T_in + T_out_long, H, W):
+    For each training sample of shape (seq_len, H, W):
       - Take the first T_in frames as input
-      - Apply Stage 1 model autoregressively (n_steps = T_out_long // T_out_short)
-        to generate T_out_long synthetic frames
-      - Append these synthetic frames to the original sample
-      - Result: (T_in + T_out_long + T_out_long, H, W)
-
-    This augmented sequence allows the long-term model to be trained with
-    random sub-sequence sampling, where some sub-sequences will include
-    synthetic frames from the Stage 1 model.
+      - Apply Stage 1 model autoregressively to generate T_out_long synthetic frames
+      - Concatenate: (seq_len + T_out_long, H, W)
 
     Args:
         stage1_model:  trained Stage 1 SimVP model
@@ -119,42 +115,61 @@ def augment_dataset_with_stage1(
         device:        compute device
         logger:        logger instance
         batch_size:    batch size for augmentation inference
+        cache_path:    path to write the memmap .npy file
 
     Returns:
-        augmented_data: (N, T_in + 2*T_out_long, H, W) float32 numpy array
+        cache_path: path to the written memmap file
     """
     stage1_model.eval()
     n_steps = (T_out_long + T_out_short - 1) // T_out_short  # ceil division
 
+    N = len(train_dataset)
+    seq_len = train_dataset.seq_len
+    # Infer H, W from first sample
+    ref0 = train_dataset.index[0]
+    sample0 = train_dataset._read_event_frames(
+        ref0.h5_path, ref0.event_idx, ref0.frame_start, seq_len
+    )
+    H, W = sample0.shape[-2], sample0.shape[-1]
+
+    # Only store synthetic frames (float16) to save disk space:
+    #   full aug (float32): N * (seq_len+T_out_long) * H * W * 4 bytes  ~539 GB
+    #   synth only (float16): N * T_out_long * H * W * 2 bytes           ~27 GB
+    disk_gb = N * T_out_long * H * W * 2 / 1e9
     logger.info(
-        f"Augmenting {len(train_dataset)} training samples with Stage 1 model "
-        f"(n_autoregressive_steps={n_steps})..."
+        f"Augmenting {N} training samples with Stage 1 model "
+        f"(n_autoregressive_steps={n_steps}, storing synth-only T_out_long={T_out_long})..."
+    )
+    logger.info(
+        f"Writing synthetic frames to memmap: {cache_path}  "
+        f"(shape=({N},{T_out_long},{H},{W}) float16, ~{disk_gb:.1f} GB)"
     )
 
-    # Temporarily set dataset to use T_in + T_out_long length
-    # We need the original samples to get the input context
-    augmented_samples = []
+    # Create memory-mapped file — only synthetic frames, float16
+    mmap = np.lib.format.open_memmap(
+        cache_path, mode="w+", dtype=np.float16, shape=(N, T_out_long, H, W)
+    )
 
-    # Process in batches for efficiency
-    indices = list(range(len(train_dataset)))
-    n_batches = (len(indices) + batch_size - 1) // batch_size
+    indices = list(range(N))
+    n_batches = (N + batch_size - 1) // batch_size
 
     for batch_idx in range(n_batches):
         batch_indices = indices[batch_idx * batch_size: (batch_idx + 1) * batch_size]
 
-        # Collect input sequences (first T_in frames of each sample)
         batch_inputs = []
-        batch_originals = []
 
         for idx in batch_indices:
-            # Read the full seq_len window via lazy loader
             ref = train_dataset.index[idx]
             seq = train_dataset._read_event_frames(
-                ref.h5_path, ref.event_idx, ref.frame_start, train_dataset.seq_len
+                ref.h5_path, ref.event_idx, ref.frame_start, seq_len
             )  # (seq_len, H, W)
-            inp = seq[:T_in]  # (T_in, H, W)
-            batch_inputs.append(inp)
-            batch_originals.append(seq)
+            # Guard: pad/trim to exact seq_len
+            if seq.shape[0] < seq_len:
+                pad = np.zeros((seq_len - seq.shape[0], H, W), dtype=seq.dtype)
+                seq = np.concatenate([seq, pad], axis=0)
+            else:
+                seq = seq[:seq_len]
+            batch_inputs.append(seq[:T_in])
 
         # Stack and move to device
         inputs_tensor = torch.from_numpy(
@@ -166,25 +181,25 @@ def augment_dataset_with_stage1(
             inputs_tensor, n_steps=n_steps
         )  # (B, n_steps*T_out_short, 1, H, W)
 
-        # Clip to T_out_long frames
         synthetic_frames = synthetic_frames[:, :T_out_long]  # (B, T_out_long, 1, H, W)
         synthetic_np = synthetic_frames.cpu().numpy()[:, :, 0, :, :]  # (B, T_out_long, H, W)
+        synthetic_np = np.clip(synthetic_np, 0, 255).astype(np.float16)  # float16 to save disk
 
-        # Clamp to valid range [0, 255]
-        synthetic_np = np.clip(synthetic_np, 0, 255)
+        # Write synthetic frames directly to memmap — no in-RAM accumulation
+        start_i = batch_idx * batch_size
+        end_i = start_i + len(batch_inputs)
+        mmap[start_i:end_i] = synthetic_np
 
-        # Append synthetic frames to original samples
-        for i, (orig, synth) in enumerate(zip(batch_originals, synthetic_np)):
-            # orig: (seq_len, H, W), synth: (T_out_long, H, W)
-            augmented = np.concatenate([orig, synth], axis=0)  # (seq_len + T_out_long, H, W)
-            augmented_samples.append(augmented)
+        if (batch_idx + 1) % 100 == 0 or (batch_idx + 1) == n_batches:
+            logger.info(
+                f"  Augmented {min(end_i, N)}/{N} samples"
+            )
 
-        if (batch_idx + 1) % 100 == 0:
-            logger.info(f"  Augmented {(batch_idx+1)*batch_size}/{len(indices)} samples")
-
-    augmented_data = np.stack(augmented_samples)  # (N, seq_len+T_out_long, H, W)
-    logger.info(f"Augmentation complete. Shape: {augmented_data.shape}")
-    return augmented_data
+    # Flush to disk
+    mmap.flush()
+    del mmap
+    logger.info(f"Augmentation complete. Saved to {cache_path}")
+    return cache_path
 
 
 # ---------------------------------------------------------------------------
@@ -351,11 +366,21 @@ def main():
     # -----------------------------------------------------------------------
     # Data augmentation with Stage 1 model
     # -----------------------------------------------------------------------
-    if args.aug_cache and os.path.exists(args.aug_cache):
-        logger.info(f"Loading cached augmented data from {args.aug_cache}")
-        augmented_data = np.load(args.aug_cache)
+    # Determine cache path (default: alongside stage1 ckpt)
+    aug_cache_path = args.aug_cache
+    if aug_cache_path is None:
+        aug_cache_path = os.path.join(
+            os.path.dirname(args.stage1_ckpt), "aug_cache.npy"
+        )
+
+    if os.path.exists(aug_cache_path) and not args.skip_augmentation:
+        logger.info(f"Found cached augmented data at {aug_cache_path}, loading as memmap...")
+        aug_mmap = np.load(aug_cache_path, mmap_mode="r")
+        # synth_only=True: cache stores only synthetic frames (float16)
+        train_ds.set_augmented_data(aug_mmap, synth_only=True)
+        logger.info(f"Training dataset size after augmentation: {len(train_ds)}")
     elif not args.skip_augmentation:
-        augmented_data = augment_dataset_with_stage1(
+        augment_dataset_with_stage1(
             stage1_model=stage1_model,
             train_dataset=train_ds,
             T_in=T_in,
@@ -364,19 +389,15 @@ def main():
             device=device,
             logger=logger,
             batch_size=cfg["dataloader"]["batch_size"] * 2,
+            cache_path=aug_cache_path,
         )
-        # Cache augmented data for future runs
-        if args.aug_cache:
-            logger.info(f"Saving augmented data to {args.aug_cache}")
-            np.save(args.aug_cache, augmented_data)
-    else:
-        augmented_data = None
-        logger.info("Skipping data augmentation")
-
-    # Set augmented data on the training dataset
-    if augmented_data is not None:
-        train_ds.set_augmented_data(augmented_data)
+        # Load back as memmap (read-only, no RAM copy)
+        aug_mmap = np.load(aug_cache_path, mmap_mode="r")
+        # synth_only=True: cache stores only synthetic frames (float16)
+        train_ds.set_augmented_data(aug_mmap, synth_only=True)
         logger.info(f"Training dataset size after augmentation: {len(train_ds)}")
+    else:
+        logger.info("Skipping data augmentation")
 
     # Build val/test loaders (long-term, no augmentation)
     _, val_loader, _ = build_sevir_dataloaders(

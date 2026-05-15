@@ -131,6 +131,7 @@ class SEVIRDataset(Dataset):
 
         # Optional augmented data for Stage 2
         self.augmented_data = augmented_data
+        self._aug_synth_only = False  # set to True when cache stores only synthetic frames
 
     def _build_index(self) -> List[SampleRef]:
         """
@@ -223,16 +224,23 @@ class SEVIRDataset(Dataset):
 
         return frames.astype(np.float32)
 
-    def set_augmented_data(self, augmented_data: np.ndarray):
+    def set_augmented_data(self, augmented_data: np.ndarray, synth_only: bool = False):
         """
         Set augmented training data for Stage 2 knowledge distillation.
 
         Args:
-            augmented_data: (N, seq_len_aug, H, W) float32 array
+            augmented_data: either
+              - (N, seq_len_aug, H, W) float32/float16 array  [synth_only=False]
+                  full augmented sequences (original + synthetic frames)
+              - (N, T_out_long, H, W) float16 array           [synth_only=True]
+                  only the synthetic frames appended by Stage 1;
+                  original frames are read on-the-fly from HDF5
+            synth_only: if True, augmented_data contains only synthetic frames
         """
         self.augmented_data = augmented_data
+        self._aug_synth_only = synth_only
         print(f"[SEVIRDataset] augmented samples added: {len(augmented_data)}, "
-              f"total: {len(self)}")
+              f"total: {len(self)}, synth_only={synth_only}")
 
     def __len__(self) -> int:
         n = len(self.index)
@@ -266,9 +274,20 @@ class SEVIRDataset(Dataset):
             )  # (seq_len, H, W)
 
         else:
-            # Augmented sample (already in RAM as numpy array)
+            # Augmented sample
             aug_idx = idx - n_orig
-            seq = self.augmented_data[aug_idx]  # (seq_len_aug, H, W)
+
+            if getattr(self, "_aug_synth_only", False):
+                # augmented_data holds only synthetic frames (T_out_long, H, W)
+                # Read the corresponding original frames from HDF5 first
+                ref = self.index[aug_idx % n_orig]  # map back to original sample
+                orig_seq = self._read_event_frames(
+                    ref.h5_path, ref.event_idx, ref.frame_start, self.seq_len
+                )  # (seq_len, H, W)
+                synth = self.augmented_data[aug_idx].astype(np.float32)  # (T_out_long, H, W)
+                seq = np.concatenate([orig_seq, synth], axis=0)  # (seq_len+T_out_long, H, W)
+            else:
+                seq = self.augmented_data[aug_idx].astype(np.float32)  # (seq_len_aug, H, W)
 
             if self.split == "train" and seq.shape[0] > self.seq_len:
                 max_start = seq.shape[0] - self.seq_len
